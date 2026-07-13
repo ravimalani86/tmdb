@@ -1,0 +1,7 @@
+/.env
+/.venv
+/API.md
+/APP_LAYOUT.md
+/info.txt
+/TMDB_LOCAL_DB_SYNC.md
+/__pycache__

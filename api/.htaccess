@@ -1,0 +1,9 @@
+RewriteEngine On
+
+# Production: https://tmdb.growdevinfotech.in/api/
+# Local XAMPP:  http://localhost/tmdb/api/  → change RewriteBase to /tmdb/api/
+RewriteBase /api/
+
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteRule ^ index.php [QSA,L]
