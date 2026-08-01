@@ -5,14 +5,17 @@ declare(strict_types=1);
 final class MovieRepository
 {
     private MediaExtrasRepository $extras;
+    private UserStateRepository $userState;
 
     public function __construct(private PDO $db)
     {
         $this->extras = new MediaExtrasRepository($db);
+        $this->userState = new UserStateRepository($db);
     }
 
     public function listMovies(array $filters): array
     {
+        $deviceId = trim((string) ($filters['device_id'] ?? ''));
         $page = $filters['page'];
         $limit = $filters['limit'];
         $offset = ($page - 1) * $limit;
@@ -26,27 +29,22 @@ final class MovieRepository
             $where[] = 'm.title LIKE :search';
             $params['search'] = '%' . $filters['search'] . '%';
         }
-        if ($filters['genre_tmdb_id'] !== null) {
-            $where[] = 'g.tmdb_id = :genre_tmdb_id';
-            $params['genre_tmdb_id'] = $filters['genre_tmdb_id'];
+        $genreIds = $filters['genre_tmdb_ids'];
+        if ($genreIds !== null) {
+            $genreIn = bind_in_list('genre', $genreIds, $params);
+            $where[] = "m.id IN (
+                SELECT mg.media_id FROM media_genres mg
+                INNER JOIN genres g ON g.id = mg.genre_id
+                WHERE mg.media_type = 'movie' AND g.tmdb_id IN ({$genreIn})
+            )";
         }
-        if ($filters['provider_tmdb_id'] !== null) {
-            $where[] = 'wp.tmdb_id = :provider_tmdb_id';
-            $params['provider_tmdb_id'] = $filters['provider_tmdb_id'];
-        }
-        if ($filters['country'] !== null) {
-            $where[] = 'mwp.country_code = :country';
-            $params['country'] = strtoupper($filters['country']);
-        }
-        $providerSqlFilter = '';
-        if ($filters['provider_tmdb_id'] !== null || $filters['country'] !== null) {
-            $providerSqlFilter = ProvidersConfig::sqlFilter('mwp', 'wp', $filters['country']);
+        $joins = '';
+        $providerIds = $filters['provider_tmdb_ids'];
+        $countries = $filters['countries'];
+        if ($providerIds !== null || $countries !== null) {
             if (
-                $filters['provider_tmdb_id'] !== null
-                && ProvidersConfig::isActive()
-                && ($filters['country'] !== null
-                    ? !ProvidersConfig::isAllowed($filters['country'], $filters['provider_tmdb_id'])
-                    : !ProvidersConfig::isAllowedInAnyRegion($filters['provider_tmdb_id']))
+                $providerIds !== null
+                && !ProvidersConfig::anyProviderAllowed($providerIds, $countries)
             ) {
                 return [
                     'page' => $page,
@@ -56,42 +54,94 @@ final class MovieRepository
                     'data' => [],
                 ];
             }
+            $providerFilter = build_provider_media_filter(
+                $this->db,
+                'movie',
+                'm',
+                $providerIds,
+                $countries,
+                $params
+            );
+            if ($providerFilter === null) {
+                return [
+                    'page' => $page,
+                    'limit' => $limit,
+                    'total' => 0,
+                    'total_pages' => 0,
+                    'data' => [],
+                ];
+            }
+            $joins .= $providerFilter['join_sql'];
+        }
+        if ($filters['released_only']) {
+            $where[] = 'm.release_date IS NOT NULL AND m.release_date <= CURDATE()';
+        }
+        if ($filters['vote_average_gte'] !== null) {
+            $where[] = 'm.vote_average >= :vote_average_gte';
+            $params['vote_average_gte'] = $filters['vote_average_gte'];
+        }
+        if ($filters['vote_count_gte'] !== null) {
+            $where[] = 'm.vote_count >= :vote_count_gte';
+            $params['vote_count_gte'] = $filters['vote_count_gte'];
+        }
+        if ($filters['release_date_gte'] !== null) {
+            $where[] = 'm.release_date IS NOT NULL AND m.release_date >= :release_date_gte';
+            $params['release_date_gte'] = $filters['release_date_gte'];
+        }
+        if ($filters['release_date_lte'] !== null) {
+            $where[] = 'm.release_date IS NOT NULL AND m.release_date <= :release_date_lte';
+            $params['release_date_lte'] = $filters['release_date_lte'];
+        }
+        $originalLanguages = $filters['original_languages'];
+        if ($originalLanguages !== null) {
+            $where[] = 'm.original_language IN (' . bind_in_list('orig_lang', $originalLanguages, $params) . ')';
         }
         if ($filters['spoken_language'] !== null) {
-            $where[] = 'sl_filter.iso_code = :spoken_language';
             $params['spoken_language'] = strtolower($filters['spoken_language']);
+            $where[] = "m.id IN (
+                SELECT msl_filter.media_id FROM media_spoken_languages msl_filter
+                INNER JOIN spoken_languages sl_filter ON sl_filter.id = msl_filter.language_id
+                WHERE msl_filter.media_type = 'movie' AND sl_filter.iso_code = :spoken_language
+            )";
+        }
+
+        $savedOnly = !empty($filters['saved_only']);
+        $watchedOnly = !empty($filters['watched_only']);
+        if ($savedOnly || $watchedOnly) {
+            if ($deviceId === '') {
+                return [
+                    'page' => $page,
+                    'limit' => $limit,
+                    'total' => 0,
+                    'total_pages' => 0,
+                    'data' => [],
+                ];
+            }
+            $joins .= " INNER JOIN user_media_state ums_filter
+                ON ums_filter.media_type = 'movie'
+                AND ums_filter.tmdb_id = m.tmdb_id
+                AND ums_filter.device_id = :ums_filter_device";
+            $params['ums_filter_device'] = $deviceId;
+            if ($savedOnly) {
+                $where[] = 'ums_filter.is_saved_for_later = 1';
+            }
+            if ($watchedOnly) {
+                $where[] = 'ums_filter.is_watched = 1';
+            }
         }
 
         $whereSql = implode(' AND ', $where);
-        $joins = '';
-        if ($filters['genre_tmdb_id'] !== null) {
-            $joins .= ' INNER JOIN media_genres mg ON mg.media_id = m.id AND mg.media_type = \'movie\'';
-            $joins .= ' INNER JOIN genres g ON g.id = mg.genre_id';
-        } elseif ($filters['provider_tmdb_id'] !== null || $filters['country'] !== null) {
-            $joins .= ' LEFT JOIN media_genres mg ON mg.media_id = m.id AND mg.media_type = \'movie\'';
-            $joins .= ' LEFT JOIN genres g ON g.id = mg.genre_id';
-        } else {
-            $joins .= ' LEFT JOIN media_genres mg ON mg.media_id = m.id AND mg.media_type = \'movie\'';
-            $joins .= ' LEFT JOIN genres g ON g.id = mg.genre_id';
-        }
-        if ($filters['provider_tmdb_id'] !== null || $filters['country'] !== null) {
-            $joins .= ' INNER JOIN media_watch_providers mwp ON mwp.media_id = m.id AND mwp.media_type = \'movie\'';
-            $joins .= ' INNER JOIN watch_providers wp ON wp.id = mwp.provider_id';
-            $whereSql = implode(' AND ', $where) . $providerSqlFilter;
-        } else {
-            $joins .= ' LEFT JOIN media_watch_providers mwp ON mwp.media_id = m.id AND mwp.media_type = \'movie\'';
-            $joins .= ' LEFT JOIN watch_providers wp ON wp.id = mwp.provider_id';
-            $whereSql = implode(' AND ', $where);
-        }
-        if ($filters['spoken_language'] !== null) {
-            $joins .= ' INNER JOIN media_spoken_languages msl_filter ON msl_filter.media_id = m.id AND msl_filter.media_type = \'movie\'';
-            $joins .= ' INNER JOIN spoken_languages sl_filter ON sl_filter.id = msl_filter.language_id';
-        }
 
-        $countSql = "SELECT COUNT(DISTINCT m.id) FROM movies m {$joins} WHERE {$whereSql}";
-        $countStmt = $this->db->prepare($countSql);
-        $countStmt->execute($params);
-        $total = (int) $countStmt->fetchColumn();
+        $includeTotal = array_key_exists('include_total', $filters)
+            ? (bool) $filters['include_total']
+            : true;
+        $total = 0;
+        if ($includeTotal) {
+            $countSql = "SELECT COUNT(*) FROM movies m{$joins} WHERE {$whereSql}";
+            $countStmt = $this->db->prepare($countSql);
+            $countStmt->execute($params);
+            $total = (int) $countStmt->fetchColumn();
+        }
 
         $orderColumn = match ($sort) {
             'vote_average' => 'm.vote_average',
@@ -101,7 +151,7 @@ final class MovieRepository
         };
 
         $sql = "
-            SELECT DISTINCT
+            SELECT
                 m.id,
                 m.tmdb_id,
                 m.title,
@@ -128,10 +178,20 @@ final class MovieRepository
         $stmt->execute();
         $rows = $stmt->fetchAll();
 
+        $mediaIds = array_map(static fn(array $row): int => (int) $row['id'], $rows);
+        $genreMap = $this->getGenreNamesMap($mediaIds);
+        $spokenMap = $this->extras->getSpokenLanguagesMap('movie', $mediaIds);
+        $flagsMap = $deviceId !== ''
+            ? $this->userState->getFlagsMap($deviceId, 'movie', array_map(static fn(array $row): int => (int) $row['tmdb_id'], $rows))
+            : [];
+
         $movies = [];
         foreach ($rows as $row) {
+            $mediaId = (int) $row['id'];
+            $flags = $flagsMap[(int) $row['tmdb_id']] ?? ['is_watched' => false, 'is_saved_for_later' => false];
             $movies[] = [
                 'tmdb_id' => (int) $row['tmdb_id'],
+                'media_type' => 'movie',
                 'title' => $row['title'],
                 'poster_url' => tmdb_image($row['poster_path'], 'w500'),
                 'backdrop_url' => tmdb_image($row['backdrop_path'], 'original'),
@@ -140,16 +200,20 @@ final class MovieRepository
                 'release_date' => $row['release_date'],
                 'popularity' => $row['popularity'] !== null ? (float) $row['popularity'] : null,
                 'original_language' => $row['original_language'],
-                'genres' => $this->getGenreNames((int) $row['id']),
-                'spoken_languages' => $this->extras->getSpokenLanguages('movie', (int) $row['id']),
+                'genres' => $genreMap[$mediaId] ?? [],
+                'spoken_languages' => $spokenMap[$mediaId] ?? [],
+                'is_watched' => $flags['is_watched'],
+                'is_saved_for_later' => $flags['is_saved_for_later'],
             ];
         }
 
         return [
             'page' => $page,
             'limit' => $limit,
-            'total' => $total,
-            'total_pages' => $limit > 0 ? (int) ceil($total / $limit) : 0,
+            'total' => $includeTotal ? $total : count($movies),
+            'total_pages' => $includeTotal
+                ? ($limit > 0 ? (int) ceil($total / $limit) : 0)
+                : 1,
             'data' => $movies,
         ];
     }
@@ -164,7 +228,7 @@ final class MovieRepository
         return $movie ?: null;
     }
 
-    public function getMovieDetail(int $tmdbId): ?array
+    public function getMovieDetail(int $tmdbId, ?string $deviceId = null): ?array
     {
         $movie = $this->findByTmdbId($tmdbId);
         if ($movie === null) {
@@ -172,9 +236,14 @@ final class MovieRepository
         }
 
         $movieId = (int) $movie['id'];
+        $flags = $deviceId !== null && trim($deviceId) !== ''
+            ? $this->userState->getFlagsForMedia(trim($deviceId), 'movie', $tmdbId)
+            : ['is_watched' => false, 'is_saved_for_later' => false];
 
         return [
             'tmdb_id' => (int) $movie['tmdb_id'],
+            'is_watched' => $flags['is_watched'],
+            'is_saved_for_later' => $flags['is_saved_for_later'],
             'title' => $movie['title'],
             'original_title' => $movie['original_title'],
             'overview' => $movie['overview'],
@@ -267,17 +336,33 @@ final class MovieRepository
         ];
     }
 
-    private function getGenreNames(int $movieId): array
+    /** @param list<int> $movieIds @return array<int, list<string>> */
+    private function getGenreNamesMap(array $movieIds): array
     {
+        $movieIds = array_values(array_unique(array_map('intval', $movieIds)));
+        if ($movieIds === []) {
+            return [];
+        }
+
+        $params = [];
+        $inList = bind_in_list('movie', $movieIds, $params);
         $stmt = $this->db->prepare(
-            "SELECT g.name
+            "SELECT mg.media_id, g.name
              FROM media_genres mg
              INNER JOIN genres g ON g.id = mg.genre_id
-             WHERE mg.media_type = 'movie' AND mg.media_id = :movie_id
+             WHERE mg.media_type = 'movie' AND mg.media_id IN ({$inList})
              ORDER BY g.name"
         );
-        $stmt->execute(['movie_id' => $movieId]);
-        return array_column($stmt->fetchAll(), 'name');
+        $stmt->execute($params);
+
+        $map = [];
+        foreach ($movieIds as $id) {
+            $map[$id] = [];
+        }
+        foreach ($stmt->fetchAll() as $row) {
+            $map[(int) $row['media_id']][] = $row['name'];
+        }
+        return $map;
     }
 
     private function getGenres(int $movieId): array
@@ -341,7 +426,7 @@ final class MovieRepository
             'name' => $row['provider_name'],
             'country_code' => $row['country_code'],
             'type' => $row['provider_type'],
-            'logo_url' => tmdb_image($row['logo_path'], 'w45'),
+            'logo_url' => provider_logo_url((int) $row['tmdb_id'], $row['logo_path'] ?? null),
         ], $rows);
     }
 

@@ -3,5 +3,11 @@
 /API.md
 /APP_LAYOUT.md
 /info.txt
+/run.txt
 /TMDB_LOCAL_DB_SYNC.md
 /__pycache__
+/exports
+/api/.env
+# Local deploy packs
+_deploy_api_v15/
+_deploy_api_v15.tar.gz

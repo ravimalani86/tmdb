@@ -5,14 +5,17 @@ declare(strict_types=1);
 final class TvRepository
 {
     private MediaExtrasRepository $extras;
+    private UserStateRepository $userState;
 
     public function __construct(private PDO $db)
     {
         $this->extras = new MediaExtrasRepository($db);
+        $this->userState = new UserStateRepository($db);
     }
 
     public function listShows(array $filters): array
     {
+        $deviceId = trim((string) ($filters['device_id'] ?? ''));
         $page = $filters['page'];
         $limit = $filters['limit'];
         $offset = ($page - 1) * $limit;
@@ -26,27 +29,22 @@ final class TvRepository
             $where[] = 't.name LIKE :search';
             $params['search'] = '%' . $filters['search'] . '%';
         }
-        if ($filters['genre_tmdb_id'] !== null) {
-            $where[] = 'g.tmdb_id = :genre_tmdb_id';
-            $params['genre_tmdb_id'] = $filters['genre_tmdb_id'];
+        $genreIds = $filters['genre_tmdb_ids'];
+        if ($genreIds !== null) {
+            $genreIn = bind_in_list('genre', $genreIds, $params);
+            $where[] = "t.id IN (
+                SELECT mg.media_id FROM media_genres mg
+                INNER JOIN genres g ON g.id = mg.genre_id
+                WHERE mg.media_type = 'tv' AND g.tmdb_id IN ({$genreIn})
+            )";
         }
-        if ($filters['provider_tmdb_id'] !== null) {
-            $where[] = 'wp.tmdb_id = :provider_tmdb_id';
-            $params['provider_tmdb_id'] = $filters['provider_tmdb_id'];
-        }
-        if ($filters['country'] !== null) {
-            $where[] = 'mwp.country_code = :country';
-            $params['country'] = strtoupper($filters['country']);
-        }
-        $providerSqlFilter = '';
-        if ($filters['provider_tmdb_id'] !== null || $filters['country'] !== null) {
-            $providerSqlFilter = ProvidersConfig::sqlFilter('mwp', 'wp', $filters['country']);
+        $joins = '';
+        $providerIds = $filters['provider_tmdb_ids'];
+        $countries = $filters['countries'];
+        if ($providerIds !== null || $countries !== null) {
             if (
-                $filters['provider_tmdb_id'] !== null
-                && ProvidersConfig::isActive()
-                && ($filters['country'] !== null
-                    ? !ProvidersConfig::isAllowed($filters['country'], $filters['provider_tmdb_id'])
-                    : !ProvidersConfig::isAllowedInAnyRegion($filters['provider_tmdb_id']))
+                $providerIds !== null
+                && !ProvidersConfig::anyProviderAllowed($providerIds, $countries)
             ) {
                 return [
                     'page' => $page,
@@ -56,39 +54,94 @@ final class TvRepository
                     'data' => [],
                 ];
             }
+            $providerFilter = build_provider_media_filter(
+                $this->db,
+                'tv',
+                't',
+                $providerIds,
+                $countries,
+                $params
+            );
+            if ($providerFilter === null) {
+                return [
+                    'page' => $page,
+                    'limit' => $limit,
+                    'total' => 0,
+                    'total_pages' => 0,
+                    'data' => [],
+                ];
+            }
+            $joins .= $providerFilter['join_sql'];
+        }
+        if ($filters['released_only']) {
+            $where[] = 't.first_air_date IS NOT NULL AND t.first_air_date <= CURDATE()';
+        }
+        if ($filters['vote_average_gte'] !== null) {
+            $where[] = 't.vote_average >= :vote_average_gte';
+            $params['vote_average_gte'] = $filters['vote_average_gte'];
+        }
+        if ($filters['vote_count_gte'] !== null) {
+            $where[] = 't.vote_count >= :vote_count_gte';
+            $params['vote_count_gte'] = $filters['vote_count_gte'];
+        }
+        if ($filters['first_air_date_gte'] !== null) {
+            $where[] = 't.first_air_date IS NOT NULL AND t.first_air_date >= :first_air_date_gte';
+            $params['first_air_date_gte'] = $filters['first_air_date_gte'];
+        }
+        if ($filters['first_air_date_lte'] !== null) {
+            $where[] = 't.first_air_date IS NOT NULL AND t.first_air_date <= :first_air_date_lte';
+            $params['first_air_date_lte'] = $filters['first_air_date_lte'];
+        }
+        $originalLanguages = $filters['original_languages'];
+        if ($originalLanguages !== null) {
+            $where[] = 't.original_language IN (' . bind_in_list('orig_lang', $originalLanguages, $params) . ')';
         }
         if ($filters['spoken_language'] !== null) {
-            $where[] = 'sl_filter.iso_code = :spoken_language';
             $params['spoken_language'] = strtolower($filters['spoken_language']);
+            $where[] = "t.id IN (
+                SELECT msl_filter.media_id FROM media_spoken_languages msl_filter
+                INNER JOIN spoken_languages sl_filter ON sl_filter.id = msl_filter.language_id
+                WHERE msl_filter.media_type = 'tv' AND sl_filter.iso_code = :spoken_language
+            )";
+        }
+
+        $savedOnly = !empty($filters['saved_only']);
+        $watchedOnly = !empty($filters['watched_only']);
+        if ($savedOnly || $watchedOnly) {
+            if ($deviceId === '') {
+                return [
+                    'page' => $page,
+                    'limit' => $limit,
+                    'total' => 0,
+                    'total_pages' => 0,
+                    'data' => [],
+                ];
+            }
+            $joins .= " INNER JOIN user_media_state ums_filter
+                ON ums_filter.media_type = 'tv'
+                AND ums_filter.tmdb_id = t.tmdb_id
+                AND ums_filter.device_id = :ums_filter_device";
+            $params['ums_filter_device'] = $deviceId;
+            if ($savedOnly) {
+                $where[] = 'ums_filter.is_saved_for_later = 1';
+            }
+            if ($watchedOnly) {
+                $where[] = 'ums_filter.is_watched = 1';
+            }
         }
 
         $whereSql = implode(' AND ', $where);
-        $joins = '';
-        if ($filters['genre_tmdb_id'] !== null) {
-            $joins .= ' INNER JOIN media_genres mg ON mg.media_id = t.id AND mg.media_type = \'tv\'';
-            $joins .= ' INNER JOIN genres g ON g.id = mg.genre_id';
-        } else {
-            $joins .= ' LEFT JOIN media_genres mg ON mg.media_id = t.id AND mg.media_type = \'tv\'';
-            $joins .= ' LEFT JOIN genres g ON g.id = mg.genre_id';
-        }
-        if ($filters['provider_tmdb_id'] !== null || $filters['country'] !== null) {
-            $joins .= ' INNER JOIN media_watch_providers mwp ON mwp.media_id = t.id AND mwp.media_type = \'tv\'';
-            $joins .= ' INNER JOIN watch_providers wp ON wp.id = mwp.provider_id';
-            $whereSql = implode(' AND ', $where) . $providerSqlFilter;
-        } else {
-            $joins .= ' LEFT JOIN media_watch_providers mwp ON mwp.media_id = t.id AND mwp.media_type = \'tv\'';
-            $joins .= ' LEFT JOIN watch_providers wp ON wp.id = mwp.provider_id';
-            $whereSql = implode(' AND ', $where);
-        }
-        if ($filters['spoken_language'] !== null) {
-            $joins .= ' INNER JOIN media_spoken_languages msl_filter ON msl_filter.media_id = t.id AND msl_filter.media_type = \'tv\'';
-            $joins .= ' INNER JOIN spoken_languages sl_filter ON sl_filter.id = msl_filter.language_id';
-        }
 
-        $countSql = "SELECT COUNT(DISTINCT t.id) FROM tv_shows t {$joins} WHERE {$whereSql}";
-        $countStmt = $this->db->prepare($countSql);
-        $countStmt->execute($params);
-        $total = (int) $countStmt->fetchColumn();
+        $includeTotal = array_key_exists('include_total', $filters)
+            ? (bool) $filters['include_total']
+            : true;
+        $total = 0;
+        if ($includeTotal) {
+            $countSql = "SELECT COUNT(*) FROM tv_shows t{$joins} WHERE {$whereSql}";
+            $countStmt = $this->db->prepare($countSql);
+            $countStmt->execute($params);
+            $total = (int) $countStmt->fetchColumn();
+        }
 
         $orderColumn = match ($sort) {
             'vote_average' => 't.vote_average',
@@ -98,7 +151,7 @@ final class TvRepository
         };
 
         $sql = "
-            SELECT DISTINCT
+            SELECT
                 t.id,
                 t.tmdb_id,
                 t.name,
@@ -127,10 +180,20 @@ final class TvRepository
         $stmt->execute();
         $rows = $stmt->fetchAll();
 
+        $mediaIds = array_map(static fn(array $row): int => (int) $row['id'], $rows);
+        $genreMap = $this->getGenreNamesMap($mediaIds);
+        $spokenMap = $this->extras->getSpokenLanguagesMap('tv', $mediaIds);
+        $flagsMap = $deviceId !== ''
+            ? $this->userState->getFlagsMap($deviceId, 'tv', array_map(static fn(array $row): int => (int) $row['tmdb_id'], $rows))
+            : [];
+
         $shows = [];
         foreach ($rows as $row) {
+            $mediaId = (int) $row['id'];
+            $flags = $flagsMap[(int) $row['tmdb_id']] ?? ['is_watched' => false, 'is_saved_for_later' => false];
             $shows[] = [
                 'tmdb_id' => (int) $row['tmdb_id'],
+                'media_type' => 'tv',
                 'name' => $row['name'],
                 'poster_url' => tmdb_image($row['poster_path'], 'w500'),
                 'backdrop_url' => tmdb_image($row['backdrop_path'], 'original'),
@@ -141,16 +204,20 @@ final class TvRepository
                 'original_language' => $row['original_language'],
                 'number_of_seasons' => $row['number_of_seasons'] !== null ? (int) $row['number_of_seasons'] : null,
                 'number_of_episodes' => $row['number_of_episodes'] !== null ? (int) $row['number_of_episodes'] : null,
-                'genres' => $this->getGenreNames((int) $row['id']),
-                'spoken_languages' => $this->extras->getSpokenLanguages('tv', (int) $row['id']),
+                'genres' => $genreMap[$mediaId] ?? [],
+                'spoken_languages' => $spokenMap[$mediaId] ?? [],
+                'is_watched' => $flags['is_watched'],
+                'is_saved_for_later' => $flags['is_saved_for_later'],
             ];
         }
 
         return [
             'page' => $page,
             'limit' => $limit,
-            'total' => $total,
-            'total_pages' => $limit > 0 ? (int) ceil($total / $limit) : 0,
+            'total' => $includeTotal ? $total : count($shows),
+            'total_pages' => $includeTotal
+                ? ($limit > 0 ? (int) ceil($total / $limit) : 0)
+                : 1,
             'data' => $shows,
         ];
     }
@@ -165,7 +232,7 @@ final class TvRepository
         return $show ?: null;
     }
 
-    public function getShowDetail(int $tmdbId): ?array
+    public function getShowDetail(int $tmdbId, ?string $deviceId = null): ?array
     {
         $show = $this->findByTmdbId($tmdbId);
         if ($show === null) {
@@ -173,9 +240,14 @@ final class TvRepository
         }
 
         $showId = (int) $show['id'];
+        $flags = $deviceId !== null && trim($deviceId) !== ''
+            ? $this->userState->getFlagsForMedia(trim($deviceId), 'tv', $tmdbId)
+            : ['is_watched' => false, 'is_saved_for_later' => false];
 
         return [
             'tmdb_id' => (int) $show['tmdb_id'],
+            'is_watched' => $flags['is_watched'],
+            'is_saved_for_later' => $flags['is_saved_for_later'],
             'name' => $show['name'],
             'original_name' => $show['original_name'],
             'overview' => $show['overview'],
@@ -242,6 +314,53 @@ final class TvRepository
         return ['tmdb_id' => $tmdbId, 'seasons' => $this->getSeasons((int) $show['id'])];
     }
 
+    public function getEpisodeDetail(int $showTmdbId, int $seasonNumber, int $episodeNumber): ?array
+    {
+        $show = $this->findByTmdbId($showTmdbId);
+        if ($show === null) {
+            return null;
+        }
+
+        $stmt = $this->db->prepare(
+            "SELECT e.id, e.tmdb_id, e.episode_number, e.name, e.overview, e.air_date,
+                    e.runtime, e.still_path, e.vote_average, e.vote_count,
+                    s.season_number
+             FROM tv_episodes e
+             INNER JOIN tv_seasons s ON s.id = e.season_id
+             WHERE e.tv_show_id = :show_id
+               AND s.season_number = :season_number
+               AND e.episode_number = :episode_number
+             LIMIT 1"
+        );
+        $stmt->execute([
+            'show_id' => (int) $show['id'],
+            'season_number' => $seasonNumber,
+            'episode_number' => $episodeNumber,
+        ]);
+        $row = $stmt->fetch();
+        if ($row === false) {
+            return null;
+        }
+
+        $episodeId = (int) $row['id'];
+
+        return [
+            'tv_tmdb_id' => $showTmdbId,
+            'season_number' => (int) $row['season_number'],
+            'episode_number' => (int) $row['episode_number'],
+            'tmdb_id' => (int) $row['tmdb_id'],
+            'name' => $row['name'],
+            'overview' => $row['overview'],
+            'air_date' => $row['air_date'],
+            'runtime' => $row['runtime'] !== null ? (int) $row['runtime'] : null,
+            'still_url' => tmdb_image($row['still_path'], 'w300'),
+            'vote_average' => $row['vote_average'] !== null ? (float) $row['vote_average'] : null,
+            'vote_count' => $row['vote_count'] !== null ? (int) $row['vote_count'] : null,
+            'cast' => $this->getEpisodeCast($episodeId),
+            'crew' => $this->getEpisodeCrew($episodeId),
+        ];
+    }
+
     public function getVideosByTmdbId(int $tmdbId): ?array
     {
         $show = $this->findByTmdbId($tmdbId);
@@ -281,17 +400,33 @@ final class TvRepository
         ];
     }
 
-    private function getGenreNames(int $showId): array
+    /** @param list<int> $showIds @return array<int, list<string>> */
+    private function getGenreNamesMap(array $showIds): array
     {
+        $showIds = array_values(array_unique(array_map('intval', $showIds)));
+        if ($showIds === []) {
+            return [];
+        }
+
+        $params = [];
+        $inList = bind_in_list('show', $showIds, $params);
         $stmt = $this->db->prepare(
-            "SELECT g.name
+            "SELECT mg.media_id, g.name
              FROM media_genres mg
              INNER JOIN genres g ON g.id = mg.genre_id
-             WHERE mg.media_type = 'tv' AND mg.media_id = :show_id
+             WHERE mg.media_type = 'tv' AND mg.media_id IN ({$inList})
              ORDER BY g.name"
         );
-        $stmt->execute(['show_id' => $showId]);
-        return array_column($stmt->fetchAll(), 'name');
+        $stmt->execute($params);
+
+        $map = [];
+        foreach ($showIds as $id) {
+            $map[$id] = [];
+        }
+        foreach ($stmt->fetchAll() as $row) {
+            $map[(int) $row['media_id']][] = $row['name'];
+        }
+        return $map;
     }
 
     private function getGenres(int $showId): array
@@ -314,13 +449,13 @@ final class TvRepository
     private function getCast(int $showId, int $limit = 20): array
     {
         $stmt = $this->db->prepare(
-            "SELECT p.tmdb_id, p.name, p.profile_path, c.character, c.order_index
+            "SELECT p.tmdb_id, p.name, p.profile_path, c.character, c.episode_count, c.order_index
              FROM credits c
              INNER JOIN people p ON p.id = c.person_id
              WHERE c.media_type = 'tv'
                AND c.media_id = :show_id
                AND c.credit_type = 'cast'
-             ORDER BY c.order_index ASC
+             ORDER BY c.order_index ASC, c.episode_count DESC
              LIMIT :limit"
         );
         $stmt->bindValue(':show_id', $showId, PDO::PARAM_INT);
@@ -332,6 +467,58 @@ final class TvRepository
             'tmdb_id' => (int) $row['tmdb_id'],
             'name' => $row['name'],
             'character' => $row['character'],
+            'episode_count' => $row['episode_count'] !== null ? (int) $row['episode_count'] : null,
+            'profile_url' => tmdb_image($row['profile_path'], 'w185'),
+        ], $rows);
+    }
+
+    private function getEpisodeCast(int $episodeId, int $limit = 50): array
+    {
+        $stmt = $this->db->prepare(
+            "SELECT p.tmdb_id, p.name, p.profile_path, c.character, c.order_index
+             FROM credits c
+             INNER JOIN people p ON p.id = c.person_id
+             WHERE c.media_type = 'episode'
+               AND c.media_id = :episode_id
+               AND c.credit_type = 'cast'
+             ORDER BY c.order_index ASC
+             LIMIT :limit"
+        );
+        $stmt->bindValue(':episode_id', $episodeId, PDO::PARAM_INT);
+        $stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
+        $stmt->execute();
+        $rows = $stmt->fetchAll();
+
+        return array_map(static fn(array $row): array => [
+            'tmdb_id' => (int) $row['tmdb_id'],
+            'name' => $row['name'],
+            'character' => $row['character'],
+            'profile_url' => tmdb_image($row['profile_path'], 'w185'),
+        ], $rows);
+    }
+
+    private function getEpisodeCrew(int $episodeId, int $limit = 50): array
+    {
+        $stmt = $this->db->prepare(
+            "SELECT p.tmdb_id, p.name, p.profile_path, c.job, c.department
+             FROM credits c
+             INNER JOIN people p ON p.id = c.person_id
+             WHERE c.media_type = 'episode'
+               AND c.media_id = :episode_id
+               AND c.credit_type = 'crew'
+             ORDER BY c.department ASC, c.job ASC
+             LIMIT :limit"
+        );
+        $stmt->bindValue(':episode_id', $episodeId, PDO::PARAM_INT);
+        $stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
+        $stmt->execute();
+        $rows = $stmt->fetchAll();
+
+        return array_map(static fn(array $row): array => [
+            'tmdb_id' => (int) $row['tmdb_id'],
+            'name' => $row['name'],
+            'job' => $row['job'],
+            'department' => $row['department'],
             'profile_url' => tmdb_image($row['profile_path'], 'w185'),
         ], $rows);
     }
@@ -355,7 +542,7 @@ final class TvRepository
             'name' => $row['provider_name'],
             'country_code' => $row['country_code'],
             'type' => $row['provider_type'],
-            'logo_url' => tmdb_image($row['logo_path'], 'w45'),
+            'logo_url' => provider_logo_url((int) $row['tmdb_id'], $row['logo_path'] ?? null),
         ], $rows);
     }
 
