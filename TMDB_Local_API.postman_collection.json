@@ -2,7 +2,7 @@
   "info": {
     "name": "TMDB Local API",
     "_postman_id": "d1e2f3a4-b5c6-47d8-9e0f-112233445566",
-    "description": "Postman collection for TMDB Local PHP API v1.5.\n\nAll endpoints use POST and require header `X-API-Key`.\nFilters and options go in the JSON body (not query params).\n\nLocal: http://localhost/tmdb/api/\nProduction: https://tmdb.growdevinfotech.in/api/",
+    "description": "Postman collection for TMDB Local PHP API v1.6.\n\nAll endpoints use POST and require header `X-API-Key`.\nFilters and options go in the JSON body (not query params).\n\nHome (v1.6): prefer `POST /home/bootstrap` + `POST /home/row` for progressive load; `POST /home/feed` remains as full legacy feed.\n\nLocal: http://localhost/tmdb/api/\nProduction: https://tmdb.growdevinfotech.in/api/",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "auth": {
@@ -88,7 +88,53 @@
       "name": "Home",
       "item": [
         {
-          "name": "Home Feed",
+          "name": "Home Bootstrap",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"filter\": \"all\",\n  \"country\": [\"IN\"],\n  \"device_id\": \"{{deviceId}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/home/bootstrap",
+              "host": ["{{baseUrl}}"],
+              "path": ["home", "bootstrap"]
+            },
+            "description": "Fast first-paint Home payload (v1.6).\n\nReturns hero + bootstrap rows + genres + `secondary_rows` list for progressive loading.\n\n**Body**\n- `filter`: all | movies | tv (default all)\n- `country`: \"IN\" or [\"IN\"]\n- `device_id` (optional) → my_list row\n\n**Response `rows` keys:** trending_movies, trending_tv, top_10, new_releases, my_list"
+          }
+        },
+        {
+          "name": "Home Row",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"filter\": \"all\",\n  \"country\": [\"IN\"],\n  \"row\": \"action\",\n  \"device_id\": \"{{deviceId}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/home/row",
+              "host": ["{{baseUrl}}"],
+              "path": ["home", "row"]
+            },
+            "description": "Single Home row for progressive loading (v1.6).\n\n**Body**\n- `row` (required): hindi | tamil | telugu | malayalam | action | thriller | crime | drama | comedy | romance | horror | animation | scifi | on_netflix | jiohotstar | prime_video | zee5 | top_rated | (also bootstrap keys)\n- `filter`: all | movies | tv\n- `country`: \"IN\" or [\"IN\"]\n- `device_id` (optional; needed for my_list)\n\n**Response:** `{ filter, country, row, data: [...] }`"
+          }
+        },
+        {
+          "name": "Home Feed (legacy full)",
           "request": {
             "method": "POST",
             "header": [
@@ -107,7 +153,7 @@
               "host": ["{{baseUrl}}"],
               "path": ["home", "feed"]
             },
-            "description": "Single-call Metflix Home feed (hero + CTR rows + genres).\n\n**Body**\n- `filter`: all | movies | tv (default all)\n- `country`: \"IN\" or [\"IN\"]\n- `device_id` (optional) → user flags + my_list row"
+            "description": "Legacy full Metflix Home feed (hero + all CTR rows + genres).\nPrefer `/home/bootstrap` + `/home/row` for faster first paint.\n\n**Body**\n- `filter`: all | movies | tv (default all)\n- `country`: \"IN\" or [\"IN\"]\n- `device_id` (optional) → user flags + my_list row"
           }
         }
       ]

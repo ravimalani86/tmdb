@@ -341,12 +341,14 @@ function build_provider_media_filter(
         }
     }
 
-    $subquery = 'SELECT DISTINCT mwp.media_id AS id FROM media_watch_providers mwp WHERE '
-        . implode(' AND ', $providerConds);
+    // EXISTS stops early under ORDER BY … LIMIT (avoids materializing DISTINCT
+    // over millions of media_watch_providers rows).
+    $existsSql = 'EXISTS (SELECT 1 FROM media_watch_providers mwp WHERE mwp.media_id = '
+        . $mediaAlias . '.id AND ' . implode(' AND ', $providerConds) . ')';
 
     return [
-        'join_sql' => " INNER JOIN ({$subquery}) provider_media ON provider_media.id = {$mediaAlias}.id",
-        'where_sql' => '',
+        'join_sql' => '',
+        'where_sql' => $existsSql,
     ];
 }
 

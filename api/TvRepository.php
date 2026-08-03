@@ -72,6 +72,9 @@ final class TvRepository
                 ];
             }
             $joins .= $providerFilter['join_sql'];
+            if ($providerFilter['where_sql'] !== '') {
+                $where[] = $providerFilter['where_sql'];
+            }
         }
         if ($filters['released_only']) {
             $where[] = 't.first_air_date IS NOT NULL AND t.first_air_date <= CURDATE()';
@@ -270,9 +273,10 @@ final class TvRepository
             'cast' => $this->getCast($showId),
             'providers' => $this->getProviders($showId),
             'similar' => $this->getSimilar($showId),
-            'seasons' => $this->getSeasons($showId),
+            // Season metadata only — full episode lists via POST /tv/{id}/seasons.
+            'seasons' => $this->getSeasons($showId, false),
             'videos' => $this->extras->getVideos('tv', $showId),
-            'images' => $this->extras->getImages('tv', $showId),
+            'images' => $this->extras->getImages('tv', $showId, 8),
             'keywords' => $this->extras->getKeywords('tv', $showId),
             'recommendations' => $this->extras->getRecommendations('tv', $showId),
         ];
@@ -570,7 +574,7 @@ final class TvRepository
         ], $rows);
     }
 
-    private function getSeasons(int $showId): array
+    private function getSeasons(int $showId, bool $includeEpisodes = true): array
     {
         $stmt = $this->db->prepare(
             "SELECT id, tmdb_id, season_number, name, overview, air_date,
@@ -593,7 +597,9 @@ final class TvRepository
                 'episode_count' => $season['episode_count'] !== null ? (int) $season['episode_count'] : null,
                 'poster_url' => tmdb_image($season['poster_path'], 'w500'),
                 'vote_average' => $season['vote_average'] !== null ? (float) $season['vote_average'] : null,
-                'episodes' => $this->getEpisodes((int) $season['id']),
+                'episodes' => $includeEpisodes
+                    ? $this->getEpisodes((int) $season['id'])
+                    : [],
             ];
         }
         return $result;

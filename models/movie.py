@@ -117,6 +117,7 @@ class Credit(Base):
     character: Mapped[str | None] = mapped_column(String(512))
     job: Mapped[str | None] = mapped_column(String(255))
     department: Mapped[str | None] = mapped_column(String(255))
+    episode_count: Mapped[int | None] = mapped_column(Integer)
     order_index: Mapped[int | None] = mapped_column(Integer)
     data_hash: Mapped[str | None] = mapped_column(String(64))
     last_synced_at: Mapped[datetime | None] = mapped_column(DateTime)
@@ -289,3 +290,21 @@ class Certification(Base):
     rating: Mapped[str | None] = mapped_column(String(32))
     meaning: Mapped[str | None] = mapped_column(String(512))
     last_synced_at: Mapped[datetime | None] = mapped_column(DateTime)
+
+
+class UserMediaState(Base):
+    __tablename__ = "user_media_state"
+    __table_args__ = (
+        UniqueConstraint("device_id", "media_type", "tmdb_id", name="uq_user_media_state"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    device_id: Mapped[str] = mapped_column(String(191), nullable=False, index=True)
+    media_type: Mapped[str] = mapped_column(String(10), nullable=False)
+    tmdb_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    is_watched: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    is_saved_for_later: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=datetime.utcnow, onupdate=datetime.utcnow
+    )

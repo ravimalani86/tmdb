@@ -53,12 +53,14 @@ def get_engine():
     global _engine
     if _engine is None:
         ensure_database_exists()
+        workers = max(1, getattr(config, "SYNC_WORKERS", 1))
+        pool_size = max(5, workers + 2)
         _engine = create_engine(
             config.DATABASE_URL,
             pool_pre_ping=True,
             pool_recycle=1800,
-            pool_size=5,
-            max_overflow=10,
+            pool_size=pool_size,
+            max_overflow=max(10, workers * 2),
         )
     return _engine
 

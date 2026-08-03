@@ -13,6 +13,12 @@ require __DIR__ . '/ProviderRepository.php';
 require __DIR__ . '/MediaExtrasRepository.php';
 require __DIR__ . '/UserStateRepository.php';
 require __DIR__ . '/HomeFeedRepository.php';
+require __DIR__ . '/PersonRepository.php';
+require __DIR__ . '/TmdbClient.php';
+require __DIR__ . '/SyncMediaWriter.php';
+require __DIR__ . '/SyncEnqueueService.php';
+require __DIR__ . '/SyncProcessService.php';
+require __DIR__ . '/SyncAdminRepository.php';
 
 header('Access-Control-Allow-Origin: ' . $config['cors_origin']);
 header('Access-Control-Allow-Methods: POST, OPTIONS');
@@ -52,6 +58,7 @@ try {
     $genres = new GenreRepository($pdo);
     $providers = new ProviderRepository($pdo);
     $userState = new UserStateRepository($pdo);
+    $people = new PersonRepository($pdo);
 
     $uri = $_SERVER['REQUEST_URI'] ?? '/';
     $path = parse_url($uri, PHP_URL_PATH) ?? '/';
@@ -63,7 +70,7 @@ try {
     if ($path === '/' || $path === '') {
         json_response([
             'name' => 'TMDB Local API',
-            'version' => '1.5',
+            'version' => '1.7',
             'endpoints' => [
                 'POST /movies',
                 'POST /movies/{tmdb_id}',
@@ -85,17 +92,68 @@ try {
                 'POST /tv/{tmdb_id}/images',
                 'POST /tv/{tmdb_id}/keywords',
                 'POST /tv/{tmdb_id}/recommendations',
+                'POST /home/bootstrap',
+                'POST /home/row',
                 'POST /home/feed',
+                'POST /people/{tmdb_id}',
                 'POST /genres',
                 'POST /providers',
                 'POST /user-state/watch',
                 'POST /user-state/save-for-later',
                 'POST /user-state/list',
+                'POST /admin/sync/status',
+                'POST /admin/sync/enqueue',
+                'POST /admin/sync/process',
+                'POST /admin/sync/run',
             ],
         ]);
     }
 
-    if ($path === '/home/feed') {
+    // --- Admin daily sync (PHP-only; no Python required) ---
+    if (str_starts_with($path, '/admin/sync')) {
+        $adminKey = (string) ($config['admin_api_key'] ?? '');
+        if ($adminKey === '' || !hash_equals($adminKey, $providedApiKey)) {
+            json_error('Unauthorized (admin)', 401);
+        }
+        $syncAdmin = new SyncAdminRepository($pdo, $config);
+        $day = query_string($input, 'day');
+        $limit = query_int($input, 'limit', 3, 1, 20);
+
+        if ($path === '/admin/sync/status') {
+            json_response($syncAdmin->status($day));
+        }
+
+        if ($path === '/admin/sync/enqueue') {
+            try {
+                json_response($syncAdmin->enqueue($day));
+            } catch (Throwable $e) {
+                error_log('admin sync enqueue: ' . $e->getMessage());
+                json_error('Enqueue failed: ' . $e->getMessage(), 500);
+            }
+        }
+
+        if ($path === '/admin/sync/process') {
+            try {
+                json_response($syncAdmin->process($limit));
+            } catch (Throwable $e) {
+                error_log('admin sync process: ' . $e->getMessage());
+                json_error('Process failed: ' . $e->getMessage(), 500);
+            }
+        }
+
+        if ($path === '/admin/sync/run') {
+            try {
+                json_response($syncAdmin->run($day, $limit));
+            } catch (Throwable $e) {
+                error_log('admin sync run: ' . $e->getMessage());
+                json_error('Run failed: ' . $e->getMessage(), 500);
+            }
+        }
+
+        json_error('Admin sync endpoint not found', 404);
+    }
+
+    if ($path === '/home/bootstrap' || $path === '/home/row' || $path === '/home/feed') {
         $filterRaw = strtolower(trim((string) ($input['filter'] ?? 'all')));
         $allowed = ['all', 'movies', 'tv'];
         if (!in_array($filterRaw, $allowed, true)) {
@@ -104,11 +162,33 @@ try {
         $countries = query_countries($input, 'country') ?? ['IN'];
         $country = strtoupper((string) ($countries[0] ?? 'IN'));
         $homeFeed = new HomeFeedRepository($movies, $tv, $genres, $userState);
-        json_response($homeFeed->buildFeed(
-            $filterRaw,
-            query_string($input, 'device_id'),
-            $country
-        ));
+        $deviceId = query_string($input, 'device_id');
+
+        if ($path === '/home/bootstrap') {
+            json_response($homeFeed->buildBootstrap($filterRaw, $deviceId, $country));
+        }
+
+        if ($path === '/home/row') {
+            $rowKey = strtolower(trim((string) ($input['row'] ?? '')));
+            if ($rowKey === '') {
+                json_error('row is required', 400);
+            }
+            try {
+                json_response($homeFeed->buildRow($filterRaw, $rowKey, $deviceId, $country));
+            } catch (InvalidArgumentException $e) {
+                json_error($e->getMessage(), 400);
+            }
+        }
+
+        json_response($homeFeed->buildFeed($filterRaw, $deviceId, $country));
+    }
+
+    if (preg_match('#^/people/(\d+)$#', $path, $m)) {
+        $detail = $people->getPersonDetail((int) $m[1]);
+        if ($detail === null) {
+            json_error('Person not found', 404);
+        }
+        json_response($detail);
     }
 
     if ($path === '/movies') {
@@ -137,7 +217,7 @@ try {
             'device_id' => $deviceId,
             'saved_only' => $savedOnly,
             'watched_only' => $watchedOnly,
-            'include_total' => query_bool($input, 'include_total', true),
+            'include_total' => query_bool($input, 'include_total', false),
         ]);
         json_response($result);
     }
@@ -168,7 +248,7 @@ try {
             'device_id' => $deviceId,
             'saved_only' => $savedOnly,
             'watched_only' => $watchedOnly,
-            'include_total' => query_bool($input, 'include_total', true),
+            'include_total' => query_bool($input, 'include_total', false),
         ]);
         json_response($result);
     }

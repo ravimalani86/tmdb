@@ -15,7 +15,7 @@ logger = get_logger(__name__)
 
 
 def main():
-    logger.info("Phase 2: TV credits sync (GET /tv/{id}/credits)")
+    logger.info("Phase 2: TV credits sync (GET /tv/{id}/aggregate_credits)")
     test_connection()
     session = get_session()
     client = TMDBClient()

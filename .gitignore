@@ -7,6 +7,7 @@
 /TMDB_LOCAL_DB_SYNC.md
 /__pycache__
 /exports
+/db_export/*.sql
 /api/.env
 # Local deploy packs
 _deploy_api_v15/

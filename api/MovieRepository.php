@@ -72,6 +72,9 @@ final class MovieRepository
                 ];
             }
             $joins .= $providerFilter['join_sql'];
+            if ($providerFilter['where_sql'] !== '') {
+                $where[] = $providerFilter['where_sql'];
+            }
         }
         if ($filters['released_only']) {
             $where[] = 'm.release_date IS NOT NULL AND m.release_date <= CURDATE()';
@@ -264,7 +267,7 @@ final class MovieRepository
             'providers' => $this->getProviders($movieId),
             'similar' => $this->getSimilar($movieId),
             'videos' => $this->extras->getVideos('movie', $movieId),
-            'images' => $this->extras->getImages('movie', $movieId),
+            'images' => $this->extras->getImages('movie', $movieId, 8),
             'keywords' => $this->extras->getKeywords('movie', $movieId),
             'recommendations' => $this->extras->getRecommendations('movie', $movieId),
         ];

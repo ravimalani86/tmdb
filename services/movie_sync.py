@@ -25,6 +25,8 @@ from utils.checkpoint import get_checkpoint, record_metrics, save_checkpoint
 from utils.hash_utils import compute_hash
 from utils.logger import get_logger
 from utils.provider_config import load_provider_jobs
+from utils.db_retry import run_with_deadlock_retry
+from utils.sync_workers import merge_count_stats, run_partitioned
 
 import config
 
@@ -139,19 +141,25 @@ def _sync_movies_detail_by_provider(
     jobs: list[dict],
     monetization: str,
 ) -> dict:
-    """Phase 1 via discover API — movies on selected provider(s) per region."""
+    """Phase 1 via discover API — movies one provider at a time."""
     start = time.time()
     stats = {"inserted": 0, "updated": 0, "skipped": 0, "failed": 0, "total": 0}
     seen_ids: set[int] = set()
 
-    logger.info("=== Phase 1: Movie DETAIL by PROVIDER (%s regions) ===", len(jobs))
+    logger.info("=== Phase 1: Movie DETAIL by PROVIDER (%s providers) ===", len(jobs))
 
     for job in jobs:
         region = job["region"]
         provider_ids = job["ids"]
         names = ", ".join(job.get("names", [])) or provider_ids
-        entity = f"movies_detail_provider_{region}"
+        entity = f"movies_detail_provider_{region}_{provider_ids}"
         checkpoint = get_checkpoint(session, entity)
+        if checkpoint and checkpoint.status == "completed":
+            logger.info(
+                "Provider %s (%s) | region %s | already completed — skipping",
+                names, provider_ids, region,
+            )
+            continue
         start_page = (checkpoint.last_processed_page + 1) if checkpoint else 1
 
         discover_params = {
@@ -161,16 +169,16 @@ def _sync_movies_detail_by_provider(
             "sort_by": "popularity.desc",
         }
         logger.info(
-            "Region %s | providers: %s | IDs: %s | from page %s",
-            region, names, provider_ids, start_page,
+            "Provider %s (%s) | region %s | from page %s",
+            names, provider_ids, region, start_page,
         )
 
         for page, data in client.paginate("discover/movie", discover_params, start_page=start_page):
             total_pages = data.get("total_pages", "?")
             total_results = data.get("total_results", "?")
             logger.info(
-                "Discover [%s] page %s/%s — %s results (region total: %s)",
-                region, page, total_pages, len(data.get("results", [])), total_results,
+                "Discover [%s/%s] page %s/%s — %s results (provider total: %s)",
+                names, region, page, total_pages, len(data.get("results", [])), total_results,
             )
             chunk_stats = _process_movie_chunk(
                 session, client, data["results"], seen_ids, detail_only=True
@@ -180,13 +188,13 @@ def _sync_movies_detail_by_provider(
             save_checkpoint(session, entity, page, status="running")
             session.commit()
             logger.info(
-                "[%s] page %s — inserted %s, updated %s, skipped %s",
-                region, page, chunk_stats["inserted"], chunk_stats["updated"], chunk_stats["skipped"],
+                "[%s/%s] page %s — inserted %s, updated %s, skipped %s",
+                names, region, page, chunk_stats["inserted"], chunk_stats["updated"], chunk_stats["skipped"],
             )
 
         save_checkpoint(session, entity, 0, status="completed")
         session.commit()
-        logger.info("Region %s complete", region)
+        logger.info("Provider %s (%s) complete", names, region)
 
     elapsed = time.time() - start
     record_metrics(
@@ -329,31 +337,81 @@ def _process_movie_chunk(
     start = time.time()
     stats = {"inserted": 0, "updated": 0, "skipped": 0, "failed": 0, "total": 0, "elapsed": 0}
 
+    work_ids: list[int] = []
     for item in items:
         tmdb_id = item["id"]
         if tmdb_id in seen_ids:
             continue
         seen_ids.add(tmdb_id)
+        work_ids.append(tmdb_id)
+
+    if not work_ids:
+        stats["elapsed"] = time.time() - start
+        return stats
+
+    if config.effective_workers(len(work_ids)) <= 1:
+        chunk = _process_movie_ids(session, client, work_ids, detail_only)
+        for k in ("inserted", "updated", "skipped", "failed", "total"):
+            stats[k] += chunk[k]
+        stats["elapsed"] = time.time() - start
+        return stats
+
+    # Parallel page items — each worker uses its own DB session + API key
+    def _worker(subset: list, worker_client: TMDBClient, _wid: int) -> dict:
+        from db import get_session
+
+        worker_session = get_session()
+        try:
+            return _process_movie_ids(
+                worker_session, worker_client, subset, detail_only
+            )
+        finally:
+            worker_session.close()
+
+    results = run_partitioned(work_ids, _worker, label="Movie detail")
+    merged = merge_count_stats(
+        results, ("inserted", "updated", "skipped", "failed", "total")
+    )
+    stats.update(merged)
+    stats["elapsed"] = time.time() - start
+    return stats
+
+
+def _process_movie_ids(
+    session: Session,
+    client: TMDBClient,
+    tmdb_ids: list[int],
+    detail_only: bool,
+) -> dict:
+    stats = {"inserted": 0, "updated": 0, "skipped": 0, "failed": 0, "total": 0}
+    for tmdb_id in tmdb_ids:
         stats["total"] += 1
         try:
             detail = client.get(f"movie/{tmdb_id}")
             if not detail:
                 stats["failed"] += 1
                 continue
-            action = upsert_movie(session, detail)
+
+            def _write() -> str:
+                action = upsert_movie(session, detail)
+                session.commit()
+                if not detail_only:
+                    movie = find_movie_by_tmdb_id(session, tmdb_id)
+                    if movie and action != "skipped":
+                        _sync_movie_related(session, client, movie, tmdb_id)
+                        session.commit()
+                return action
+
+            action = run_with_deadlock_retry(
+                _write,
+                rollback=session.rollback,
+                label=f"Movie {tmdb_id}",
+            )
             stats[action] += 1
-            session.commit()
-            if not detail_only:
-                movie = find_movie_by_tmdb_id(session, tmdb_id)
-                if movie and action != "skipped":
-                    _sync_movie_related(session, client, movie, tmdb_id)
-                    session.commit()
         except Exception as exc:
             stats["failed"] += 1
             session.rollback()
             logger.error("Movie %s failed: %s", tmdb_id, exc)
-
-    stats["elapsed"] = time.time() - start
     return stats
 
 
@@ -394,6 +452,8 @@ def _sync_movie_related(session: Session, client: TMDBClient, movie: Movie, tmdb
 
 
 def _ensure_person(session, client, data, _cache: dict | None = None):
+    from sqlalchemy.exc import IntegrityError
+
     from repositories.people_repo import find_person_by_tmdb_id, upsert_person
 
     tmdb_id = data.get("id")
@@ -406,8 +466,14 @@ def _ensure_person(session, client, data, _cache: dict | None = None):
         if _cache is not None:
             _cache[tmdb_id] = existing
         return existing
-    upsert_person(session, data)
-    session.flush()
+    try:
+        # Nested txn: concurrent workers inserting the same person must not
+        # poison the outer episode/season transaction on duplicate key.
+        with session.begin_nested():
+            upsert_person(session, data)
+            session.flush()
+    except IntegrityError:
+        pass
     person = find_person_by_tmdb_id(session, tmdb_id)
     if _cache is not None and person:
         _cache[tmdb_id] = person
@@ -439,6 +505,102 @@ def _sync_credits(session, client, media_type, media_id, tmdb_id):
         if person:
             session.add(Credit(
                 media_type=media_type, media_id=media_id, person_id=person.id,
+                credit_type="crew", job=crew.get("job"), department=crew.get("department"),
+                data_hash=compute_hash(crew), last_synced_at=now,
+            ))
+
+
+def _sync_tv_aggregate_credits(session, client, media_id: int, tmdb_id: int) -> None:
+    """Persist TV cast/crew from aggregate_credits (includes per-role episode_count)."""
+    data = client.get(f"tv/{tmdb_id}/aggregate_credits")
+    if not data:
+        return
+    now = datetime.now(timezone.utc)
+    person_cache: dict = {}
+    session.query(Credit).filter(
+        Credit.media_type == "tv", Credit.media_id == media_id
+    ).delete(synchronize_session=False)
+
+    for idx, cast in enumerate(data.get("cast", [])):
+        person = _ensure_person(session, client, cast, person_cache)
+        if not person:
+            continue
+        order = cast.get("order", idx)
+        roles = cast.get("roles") or []
+        if not roles:
+            session.add(Credit(
+                media_type="tv", media_id=media_id, person_id=person.id,
+                credit_type="cast", character=None,
+                episode_count=cast.get("total_episode_count"),
+                order_index=order,
+                data_hash=compute_hash(cast), last_synced_at=now,
+            ))
+            continue
+        for role in roles:
+            session.add(Credit(
+                media_type="tv", media_id=media_id, person_id=person.id,
+                credit_type="cast", character=role.get("character"),
+                episode_count=role.get("episode_count"),
+                order_index=order,
+                data_hash=compute_hash(role), last_synced_at=now,
+            ))
+
+    for crew in data.get("crew", []):
+        person = _ensure_person(session, client, crew, person_cache)
+        if not person:
+            continue
+        jobs = crew.get("jobs") or []
+        if not jobs:
+            session.add(Credit(
+                media_type="tv", media_id=media_id, person_id=person.id,
+                credit_type="crew", job=None, department=crew.get("department"),
+                episode_count=crew.get("total_episode_count"),
+                data_hash=compute_hash(crew), last_synced_at=now,
+            ))
+            continue
+        for job in jobs:
+            session.add(Credit(
+                media_type="tv", media_id=media_id, person_id=person.id,
+                credit_type="crew", job=job.get("job"),
+                department=crew.get("department"),
+                episode_count=job.get("episode_count"),
+                data_hash=compute_hash(job), last_synced_at=now,
+            ))
+
+
+def _sync_episode_credits(session, client, episode_id: int, episode_data: dict) -> None:
+    """Persist guest_stars + crew from a TMDB episode payload (media_type=episode)."""
+    now = datetime.now(timezone.utc)
+    person_cache: dict = {}
+    session.query(Credit).filter(
+        Credit.media_type == "episode", Credit.media_id == episode_id
+    ).delete(synchronize_session=False)
+
+    # Stable person_id lock order across workers reduces MySQL deadlocks.
+    guest_stars = sorted(
+        episode_data.get("guest_stars", []),
+        key=lambda c: (c.get("id") is None, c.get("id") or 0),
+    )
+    crew_list = sorted(
+        episode_data.get("crew", []),
+        key=lambda c: (c.get("id") is None, c.get("id") or 0),
+    )
+
+    for idx, cast in enumerate(guest_stars):
+        person = _ensure_person(session, client, cast, person_cache)
+        if person:
+            session.add(Credit(
+                media_type="episode", media_id=episode_id, person_id=person.id,
+                credit_type="cast", character=cast.get("character"),
+                order_index=cast.get("order", idx),
+                data_hash=compute_hash(cast), last_synced_at=now,
+            ))
+
+    for crew in crew_list:
+        person = _ensure_person(session, client, crew, person_cache)
+        if person:
+            session.add(Credit(
+                media_type="episode", media_id=episode_id, person_id=person.id,
                 credit_type="crew", job=crew.get("job"), department=crew.get("department"),
                 data_hash=compute_hash(crew), last_synced_at=now,
             ))

@@ -62,21 +62,41 @@ final class MediaExtrasRepository
 
     public function getSpokenLanguages(string $mediaType, int $mediaId): array
     {
+        return $this->getSpokenLanguagesMap($mediaType, [$mediaId])[$mediaId] ?? [];
+    }
+
+    /** @param list<int> $mediaIds @return array<int, list<array{code: mixed, name: mixed, english_name: mixed}>> */
+    public function getSpokenLanguagesMap(string $mediaType, array $mediaIds): array
+    {
+        $mediaIds = array_values(array_unique(array_map('intval', $mediaIds)));
+        if ($mediaIds === []) {
+            return [];
+        }
+
+        $params = ['media_type' => $mediaType];
+        $inList = bind_in_list('media', $mediaIds, $params);
         $stmt = $this->db->prepare(
-            "SELECT sl.iso_code, sl.language_name, sl.english_name
+            "SELECT msl.media_id, sl.iso_code, sl.language_name, sl.english_name
              FROM media_spoken_languages msl
              INNER JOIN spoken_languages sl ON sl.id = msl.language_id
-             WHERE msl.media_type = :media_type AND msl.media_id = :media_id
+             WHERE msl.media_type = :media_type AND msl.media_id IN ({$inList})
              ORDER BY sl.english_name, sl.language_name"
         );
-        $stmt->execute(['media_type' => $mediaType, 'media_id' => $mediaId]);
-        $rows = $stmt->fetchAll();
+        $stmt->execute($params);
 
-        return array_map(static fn(array $row): array => [
-            'code' => $row['iso_code'],
-            'name' => $row['language_name'],
-            'english_name' => $row['english_name'],
-        ], $rows);
+        $map = [];
+        foreach ($mediaIds as $id) {
+            $map[$id] = [];
+        }
+        foreach ($stmt->fetchAll() as $row) {
+            $id = (int) $row['media_id'];
+            $map[$id][] = [
+                'code' => $row['iso_code'],
+                'name' => $row['language_name'],
+                'english_name' => $row['english_name'],
+            ];
+        }
+        return $map;
     }
 
     public function getRecommendations(string $mediaType, int $mediaId, int $limit = 20): array

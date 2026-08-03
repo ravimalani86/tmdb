@@ -87,6 +87,39 @@ final class ProvidersConfig
         return isset($cfg['by_country'][$country][$tmdbId]);
     }
 
+    /** @param list<string> $countryCodes */
+    public static function isAllowedInCountries(array $countryCodes, int $tmdbId): bool
+    {
+        foreach ($countryCodes as $countryCode) {
+            if (self::isAllowed($countryCode, $tmdbId)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * True if any provider id is allowed in the given countries (or any region when countries is null).
+     *
+     * @param list<int> $providerTmdbIds
+     * @param list<string>|null $countryCodes
+     */
+    public static function anyProviderAllowed(array $providerTmdbIds, ?array $countryCodes = null): bool
+    {
+        if (!self::isActive()) {
+            return true;
+        }
+        foreach ($providerTmdbIds as $tmdbId) {
+            $ok = $countryCodes !== null
+                ? self::isAllowedInCountries($countryCodes, $tmdbId)
+                : self::isAllowedInAnyRegion($tmdbId);
+            if ($ok) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     public static function isAllowedInAnyRegion(int $tmdbId): bool
     {
         $cfg = self::load();
@@ -104,9 +137,10 @@ final class ProvidersConfig
     /**
      * Catalog entries for GET /providers (from JSON, not full DB dump).
      *
+     * @param list<string>|null $countryCodes
      * @return list<array{country_code: string, tmdb_id: int, name: string}>
      */
-    public static function catalog(?string $countryCode = null): array
+    public static function catalog(?array $countryCodes = null): array
     {
         $cfg = self::load();
         if ($cfg === null) {
@@ -114,9 +148,15 @@ final class ProvidersConfig
         }
 
         $items = [];
-        $filter = $countryCode !== null ? strtoupper($countryCode) : null;
+        $filter = null;
+        if ($countryCodes !== null) {
+            $filter = [];
+            foreach ($countryCodes as $code) {
+                $filter[strtoupper($code)] = true;
+            }
+        }
         foreach ($cfg['by_country'] as $country => $providers) {
-            if ($filter !== null && $country !== $filter) {
+            if ($filter !== null && !isset($filter[$country])) {
                 continue;
             }
             foreach ($providers as $tmdbId => $meta) {
@@ -138,8 +178,10 @@ final class ProvidersConfig
 
     /**
      * SQL AND fragment for allowed provider rows, e.g. mwp + wp aliases.
+     *
+     * @param list<string>|null $countryCodes
      */
-    public static function sqlFilter(string $mwpAlias, string $wpAlias, ?string $countryCode = null): string
+    public static function sqlFilter(string $mwpAlias, string $wpAlias, ?array $countryCodes = null): string
     {
         $cfg = self::load();
         if ($cfg === null) {
@@ -147,15 +189,33 @@ final class ProvidersConfig
         }
 
         $parts = [sprintf('%s.provider_type = %s', $mwpAlias, self::quote(self::monetization()))];
-        $country = $countryCode !== null ? strtoupper($countryCode) : null;
+        $countries = [];
+        if ($countryCodes !== null) {
+            foreach ($countryCodes as $code) {
+                $countries[strtoupper($code)] = strtoupper($code);
+            }
+            $countries = array_values($countries);
+        }
 
-        if ($country !== null) {
-            $ids = array_keys($cfg['by_country'][$country] ?? []);
-            if ($ids === []) {
+        if ($countries !== []) {
+            $regionParts = [];
+            foreach ($countries as $country) {
+                $ids = array_keys($cfg['by_country'][$country] ?? []);
+                if ($ids === []) {
+                    continue;
+                }
+                $regionParts[] = sprintf(
+                    '(%s.country_code = %s AND %s.tmdb_id IN (%s))',
+                    $mwpAlias,
+                    self::quote($country),
+                    $wpAlias,
+                    implode(',', array_map('intval', $ids))
+                );
+            }
+            if ($regionParts === []) {
                 return ' AND 1 = 0';
             }
-            $parts[] = sprintf('%s.country_code = %s', $mwpAlias, self::quote($country));
-            $parts[] = sprintf('%s.tmdb_id IN (%s)', $wpAlias, implode(',', array_map('intval', $ids)));
+            $parts[] = '(' . implode(' OR ', $regionParts) . ')';
         } else {
             $regionParts = [];
             foreach ($cfg['by_country'] as $region => $providers) {
@@ -206,5 +266,39 @@ final class ProvidersConfig
     private static function quote(string $value): string
     {
         return "'" . str_replace("'", "''", $value) . "'";
+    }
+
+    /**
+     * Per-country allowed TMDB provider ids from config.
+     *
+     * @param list<string>|null $countryCodes
+     * @return array<string, list<int>> country => tmdb provider ids
+     */
+    public static function allowedTmdbIdsByCountry(?array $countryCodes = null): array
+    {
+        $cfg = self::load();
+        if ($cfg === null) {
+            return [];
+        }
+
+        $wanted = null;
+        if ($countryCodes !== null) {
+            $wanted = [];
+            foreach ($countryCodes as $code) {
+                $wanted[strtoupper($code)] = true;
+            }
+        }
+
+        $out = [];
+        foreach ($cfg['by_country'] as $country => $providers) {
+            if ($wanted !== null && !isset($wanted[$country])) {
+                continue;
+            }
+            $ids = array_map('intval', array_keys($providers));
+            if ($ids !== []) {
+                $out[$country] = $ids;
+            }
+        }
+        return $out;
     }
 }

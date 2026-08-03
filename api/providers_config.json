@@ -16,7 +16,6 @@
     { "name": "Apple TV+", "region": "US", "tmdb_id": 350 },
     { "name": "Crunchyroll", "region": "US", "tmdb_id": 283 },
     { "name": "MGM+", "region": "US", "tmdb_id": 34 },
-    { "name": "Disney+ Hotstar", "region": "IN", "tmdb_id": 2336 },
     { "name": "Eros Now", "region": "IN", "tmdb_id": 2059 },
     { "name": "JioHotstar", "region": "IN", "tmdb_id": 2336 },
     { "name": "ZEE5", "region": "IN", "tmdb_id": 232 },

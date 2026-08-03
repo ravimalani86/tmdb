@@ -10,11 +10,18 @@ from models.genres import Genre, MediaGenre, ProductionCountry, MediaProductionC
 from models.movie import (
     Movie, Collection, Keyword, MediaKeyword, Credit, Video, Image,
     WatchProvider, MediaWatchProvider, ExternalId, Translation,
-    Recommendation, SimilarMedia, Certification,
+    Recommendation, SimilarMedia, Certification, UserMediaState,
 )
 from models.tv import TvShow, TvSeason, TvEpisode
 from models.people import Person
-from models.sync_state import SyncCheckpoint, SyncMetrics, RateLimitTracker, RetryQueue
+from models.sync_state import (
+    SyncCheckpoint,
+    SyncMetrics,
+    RateLimitTracker,
+    RetryQueue,
+    TvSeasonSyncJob,
+    MediaSyncQueue,
+)
 from utils.logger import get_logger
 
 logger = get_logger(__name__)

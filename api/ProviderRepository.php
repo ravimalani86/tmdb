@@ -4,28 +4,37 @@ declare(strict_types=1);
 
 final class ProviderRepository
 {
+    /** @var array<int, string|null>|null */
+    private static ?array $logoCache = null;
+
     public function __construct(private PDO $db)
     {
     }
 
-    public function listProviders(?string $country = null, string $mediaType = 'movie'): array
+    /** @param list<string>|null $countries */
+    public function listProviders(?array $countries = null, string $mediaType = 'movie'): array
     {
         $mediaType = $mediaType === 'tv' ? 'tv' : 'movie';
-        $catalog = ProvidersConfig::catalog($country);
+        $catalog = ProvidersConfig::catalog($countries);
 
         if ($catalog === [] && !ProvidersConfig::isActive()) {
-            if ($country !== null) {
+            if ($countries !== null) {
+                $placeholders = [];
+                $params = ['media_type' => $mediaType];
+                foreach ($countries as $i => $code) {
+                    $key = 'country_' . $i;
+                    $placeholders[] = ':' . $key;
+                    $params[$key] = $code;
+                }
                 $stmt = $this->db->prepare(
                     "SELECT DISTINCT wp.tmdb_id, wp.provider_name, wp.logo_path, mwp.country_code
                      FROM watch_providers wp
                      INNER JOIN media_watch_providers mwp ON mwp.provider_id = wp.id
-                     WHERE mwp.media_type = :media_type AND mwp.country_code = :country
+                     WHERE mwp.media_type = :media_type
+                       AND mwp.country_code IN (" . implode(', ', $placeholders) . ")
                      ORDER BY wp.provider_name"
                 );
-                $stmt->execute([
-                    'media_type' => $mediaType,
-                    'country' => strtoupper($country),
-                ]);
+                $stmt->execute($params);
             } else {
                 $stmt = $this->db->query(
                     "SELECT tmdb_id, provider_name, logo_path, country_code
@@ -40,7 +49,7 @@ final class ProviderRepository
                 'data' => array_map(static fn(array $row): array => [
                     'tmdb_id' => (int) $row['tmdb_id'],
                     'name' => $row['provider_name'],
-                    'logo_url' => tmdb_image($row['logo_path'], 'w45'),
+                    'logo_url' => provider_logo_url((int) $row['tmdb_id'], $row['logo_path'] ?? null),
                     'country_code' => $row['country_code'] ?? null,
                 ], $rows),
             ];
@@ -54,7 +63,7 @@ final class ProviderRepository
                 return [
                     'tmdb_id' => $item['tmdb_id'],
                     'name' => $item['name'],
-                    'logo_url' => tmdb_image($logoPath, 'w45'),
+                    'logo_url' => provider_logo_url((int) $item['tmdb_id'], $logoPath),
                     'country_code' => $item['country_code'],
                 ];
             }, $catalog),
@@ -64,11 +73,15 @@ final class ProviderRepository
     /** @return array<int, string|null> */
     private function loadLogoPaths(): array
     {
+        if (self::$logoCache !== null) {
+            return self::$logoCache;
+        }
         $stmt = $this->db->query('SELECT tmdb_id, logo_path FROM watch_providers');
         $logos = [];
         foreach ($stmt->fetchAll() as $row) {
             $logos[(int) $row['tmdb_id']] = $row['logo_path'];
         }
+        self::$logoCache = $logos;
         return $logos;
     }
 }
