@@ -2,7 +2,7 @@
   "info": {
     "name": "TMDB Local API",
     "_postman_id": "d1e2f3a4-b5c6-47d8-9e0f-112233445566",
-    "description": "Postman collection for TMDB Local PHP API v1.6.\n\nAll endpoints use POST and require header `X-API-Key`.\nFilters and options go in the JSON body (not query params).\n\nHome (v1.6): prefer `POST /home/bootstrap` + `POST /home/row` for progressive load; `POST /home/feed` remains as full legacy feed.\n\nLocal: http://localhost/tmdb/api/\nProduction: https://tmdb.growdevinfotech.in/api/",
+    "description": "Postman collection for TMDB Local PHP API v1.7.\n\nAll endpoints use POST and require header `X-API-Key`.\nFilters and options go in the JSON body (not query params).\n\nHome: prefer `POST /home/bootstrap` + `POST /home/row` for progressive load; `POST /home/feed` is the full legacy feed.\n\nDefault variables point to **live**:\n- baseUrl: https://app.myappworld.in/tmdb/api\n- apiKey: live Flutter/API key\n\nLocal override: http://localhost/tmdb/api + local API_KEY from api/.env",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "auth": {
@@ -28,11 +28,11 @@
   "variable": [
     {
       "key": "baseUrl",
-      "value": "http://localhost/tmdb/api"
+      "value": "https://app.myappworld.in/tmdb/api"
     },
     {
       "key": "apiKey",
-      "value": "YOUR_API_KEY"
+      "value": "f3a9d6c1b8e5f27a4d0c9e6b1a7f5d82"
     },
     {
       "key": "movieTmdbId",
@@ -41,6 +41,10 @@
     {
       "key": "tvTmdbId",
       "value": "1399"
+    },
+    {
+      "key": "personTmdbId",
+      "value": "287"
     },
     {
       "key": "seasonNumber",
@@ -53,6 +57,14 @@
     {
       "key": "deviceId",
       "value": "DEVICE_001"
+    },
+    {
+      "key": "processLimit",
+      "value": "3"
+    },
+    {
+      "key": "syncDay",
+      "value": ""
     }
   ],
   "item": [
@@ -76,11 +88,16 @@
             },
             "url": {
               "raw": "{{baseUrl}}/",
-              "host": ["{{baseUrl}}"],
-              "path": [""]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                ""
+              ]
             },
-            "description": "Returns API name, version, and endpoint list."
-          }
+            "description": "Returns API name, version (1.7), and endpoint list."
+          },
+          "response": []
         }
       ]
     },
@@ -104,11 +121,17 @@
             },
             "url": {
               "raw": "{{baseUrl}}/home/bootstrap",
-              "host": ["{{baseUrl}}"],
-              "path": ["home", "bootstrap"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "home",
+                "bootstrap"
+              ]
             },
-            "description": "Fast first-paint Home payload (v1.6).\n\nReturns hero + bootstrap rows + genres + `secondary_rows` list for progressive loading.\n\n**Body**\n- `filter`: all | movies | tv (default all)\n- `country`: \"IN\" or [\"IN\"]\n- `device_id` (optional) → my_list row\n\n**Response `rows` keys:** trending_movies, trending_tv, top_10, new_releases, my_list"
-          }
+            "description": "Fast first-paint Home payload.\n\nReturns hero + bootstrap rows + genres + `secondary_rows` for progressive loading.\n\n**Body**\n- `filter`: all | movies | tv (default all)\n- `country`: \"IN\" or [\"IN\"]\n- `device_id` (optional) -> my_list row\n\n**Response `rows` keys:** trending_movies, trending_tv, top_10, new_releases, my_list"
+          },
+          "response": []
         },
         {
           "name": "Home Row",
@@ -127,11 +150,17 @@
             },
             "url": {
               "raw": "{{baseUrl}}/home/row",
-              "host": ["{{baseUrl}}"],
-              "path": ["home", "row"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "home",
+                "row"
+              ]
             },
-            "description": "Single Home row for progressive loading (v1.6).\n\n**Body**\n- `row` (required): hindi | tamil | telugu | malayalam | action | thriller | crime | drama | comedy | romance | horror | animation | scifi | on_netflix | jiohotstar | prime_video | zee5 | top_rated | (also bootstrap keys)\n- `filter`: all | movies | tv\n- `country`: \"IN\" or [\"IN\"]\n- `device_id` (optional; needed for my_list)\n\n**Response:** `{ filter, country, row, data: [...] }`"
-          }
+            "description": "Single Home row for progressive loading.\n\n**Body**\n- `row` (required): hindi | tamil | telugu | malayalam | action | thriller | crime | drama | comedy | romance | horror | animation | scifi | on_netflix | jiohotstar | prime_video | zee5 | top_rated | (also bootstrap keys)\n- `filter`: all | movies | tv\n- `country`: \"IN\" or [\"IN\"]\n- `device_id` (optional; needed for my_list)\n\n**Response:** `{ filter, country, row, data: [...] }`"
+          },
+          "response": []
         },
         {
           "name": "Home Feed (legacy full)",
@@ -150,11 +179,17 @@
             },
             "url": {
               "raw": "{{baseUrl}}/home/feed",
-              "host": ["{{baseUrl}}"],
-              "path": ["home", "feed"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "home",
+                "feed"
+              ]
             },
-            "description": "Legacy full Metflix Home feed (hero + all CTR rows + genres).\nPrefer `/home/bootstrap` + `/home/row` for faster first paint.\n\n**Body**\n- `filter`: all | movies | tv (default all)\n- `country`: \"IN\" or [\"IN\"]\n- `device_id` (optional) → user flags + my_list row"
-          }
+            "description": "Legacy full Metflix Home feed (hero + all CTR rows + genres).\nPrefer `/home/bootstrap` + `/home/row` for faster first paint.\n\n**Body**\n- `filter`: all | movies | tv (default all)\n- `country`: \"IN\" or [\"IN\"]\n- `device_id` (optional) -> user flags + my_list row"
+          },
+          "response": []
         }
       ]
     },
@@ -174,15 +209,20 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"page\": 1,\n  \"limit\": 20,\n  \"sort\": \"popularity\",\n  \"order\": \"desc\",\n  \"search\": null,\n  \"genre_id\": [28, 35],\n  \"provider_id\": [8],\n  \"country\": [\"IN\", \"US\"],\n  \"spoken_language\": null,\n  \"original_language\": [\"hi\", \"en\"],\n  \"vote_average_gte\": 7,\n  \"vote_count_gte\": 100,\n  \"release_date_gte\": \"2020-01-01\",\n  \"release_date_lte\": null,\n  \"released_only\": true,\n  \"saved_only\": false,\n  \"watched_only\": false,\n  \"device_id\": \"{{deviceId}}\"\n}"
+              "raw": "{\n  \"page\": 1,\n  \"limit\": 20,\n  \"sort\": \"popularity\",\n  \"order\": \"desc\",\n  \"search\": null,\n  \"genre_id\": [28, 35],\n  \"provider_id\": [8],\n  \"country\": [\"IN\", \"US\"],\n  \"spoken_language\": null,\n  \"original_language\": [\"hi\", \"en\"],\n  \"vote_average_gte\": 7,\n  \"vote_count_gte\": 100,\n  \"release_date_gte\": \"2020-01-01\",\n  \"release_date_lte\": null,\n  \"released_only\": true,\n  \"saved_only\": false,\n  \"watched_only\": false,\n  \"include_total\": false,\n  \"device_id\": \"{{deviceId}}\"\n}"
             },
             "url": {
               "raw": "{{baseUrl}}/movies",
-              "host": ["{{baseUrl}}"],
-              "path": ["movies"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "movies"
+              ]
             },
-            "description": "Paginated movie list with filters.\n\n**Body params**\n- `page` (int, default 1)\n- `limit` (int, 1–50, default 20)\n- `sort`: popularity | vote_average | release_date | title\n- `order`: asc | desc\n- `search` (string)\n- `genre_id`: int or [int]\n- `provider_id`: int or [int] (TMDB provider ids)\n- `country`: \"IN\" or [\"IN\",\"US\"]\n- `spoken_language` (string)\n- `original_language`: \"hi\" | \"hi|en\" | [\"hi\",\"en\"]\n- `vote_average_gte` (float)\n- `vote_count_gte` (int)\n- `release_date_gte` / `release_date_lte` (YYYY-MM-DD)\n- `released_only` (bool)\n- `saved_only` / `watched_only` (bool) — requires `device_id`\n- `device_id` (optional) → adds `is_watched` / `is_saved_for_later`"
-          }
+            "description": "Paginated movie list with filters.\n\n**Body params**\n- `page` (int, default 1)\n- `limit` (int, 1-50, default 20)\n- `sort`: popularity | vote_average | release_date | title\n- `order`: asc | desc\n- `search` (string)\n- `genre_id`: int or [int]\n- `provider_id`: int or [int] (TMDB provider ids)\n- `country`: \"IN\" or [\"IN\",\"US\"]\n- `spoken_language` (string)\n- `original_language`: \"hi\" | \"hi|en\" | [\"hi\",\"en\"]\n- `vote_average_gte` (float)\n- `vote_count_gte` (int)\n- `release_date_gte` / `release_date_lte` (YYYY-MM-DD)\n- `released_only` (bool)\n- `saved_only` / `watched_only` (bool) -- requires `device_id`\n- `include_total` (bool, default false) -- skip COUNT(*) when false\n- `device_id` (optional) -> adds `is_watched` / `is_saved_for_later`"
+          },
+          "response": []
         },
         {
           "name": "List Movies (Saved Only)",
@@ -201,11 +241,44 @@
             },
             "url": {
               "raw": "{{baseUrl}}/movies",
-              "host": ["{{baseUrl}}"],
-              "path": ["movies"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "movies"
+              ]
             },
             "description": "Movies saved for later by this device (`saved_only` + `device_id`)."
-          }
+          },
+          "response": []
+        },
+        {
+          "name": "List Movies (Watched Only)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"page\": 1,\n  \"limit\": 20,\n  \"sort\": \"popularity\",\n  \"order\": \"desc\",\n  \"watched_only\": true,\n  \"device_id\": \"{{deviceId}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/movies",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "movies"
+              ]
+            },
+            "description": "Movies marked watched by this device (`watched_only` + `device_id`)."
+          },
+          "response": []
         },
         {
           "name": "Movie Detail",
@@ -224,11 +297,17 @@
             },
             "url": {
               "raw": "{{baseUrl}}/movies/{{movieTmdbId}}",
-              "host": ["{{baseUrl}}"],
-              "path": ["movies", "{{movieTmdbId}}"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "movies",
+                "{{movieTmdbId}}"
+              ]
             },
             "description": "Full movie detail. Optional `device_id` returns watch/save flags."
-          }
+          },
+          "response": []
         },
         {
           "name": "Movie Credits",
@@ -247,11 +326,18 @@
             },
             "url": {
               "raw": "{{baseUrl}}/movies/{{movieTmdbId}}/credits",
-              "host": ["{{baseUrl}}"],
-              "path": ["movies", "{{movieTmdbId}}", "credits"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "movies",
+                "{{movieTmdbId}}",
+                "credits"
+              ]
             },
             "description": "Cast and crew for a movie."
-          }
+          },
+          "response": []
         },
         {
           "name": "Movie Providers",
@@ -270,11 +356,18 @@
             },
             "url": {
               "raw": "{{baseUrl}}/movies/{{movieTmdbId}}/providers",
-              "host": ["{{baseUrl}}"],
-              "path": ["movies", "{{movieTmdbId}}", "providers"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "movies",
+                "{{movieTmdbId}}",
+                "providers"
+              ]
             },
             "description": "Watch providers for a movie (by country)."
-          }
+          },
+          "response": []
         },
         {
           "name": "Movie Similar",
@@ -293,11 +386,18 @@
             },
             "url": {
               "raw": "{{baseUrl}}/movies/{{movieTmdbId}}/similar",
-              "host": ["{{baseUrl}}"],
-              "path": ["movies", "{{movieTmdbId}}", "similar"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "movies",
+                "{{movieTmdbId}}",
+                "similar"
+              ]
             },
             "description": "Similar movies."
-          }
+          },
+          "response": []
         },
         {
           "name": "Movie Videos",
@@ -316,11 +416,18 @@
             },
             "url": {
               "raw": "{{baseUrl}}/movies/{{movieTmdbId}}/videos",
-              "host": ["{{baseUrl}}"],
-              "path": ["movies", "{{movieTmdbId}}", "videos"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "movies",
+                "{{movieTmdbId}}",
+                "videos"
+              ]
             },
             "description": "Trailers / videos only."
-          }
+          },
+          "response": []
         },
         {
           "name": "Movie Images",
@@ -339,11 +446,18 @@
             },
             "url": {
               "raw": "{{baseUrl}}/movies/{{movieTmdbId}}/images",
-              "host": ["{{baseUrl}}"],
-              "path": ["movies", "{{movieTmdbId}}", "images"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "movies",
+                "{{movieTmdbId}}",
+                "images"
+              ]
             },
             "description": "Image gallery (backdrops, posters)."
-          }
+          },
+          "response": []
         },
         {
           "name": "Movie Keywords",
@@ -362,11 +476,18 @@
             },
             "url": {
               "raw": "{{baseUrl}}/movies/{{movieTmdbId}}/keywords",
-              "host": ["{{baseUrl}}"],
-              "path": ["movies", "{{movieTmdbId}}", "keywords"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "movies",
+                "{{movieTmdbId}}",
+                "keywords"
+              ]
             },
             "description": "Keywords for a movie."
-          }
+          },
+          "response": []
         },
         {
           "name": "Movie Recommendations",
@@ -385,11 +506,18 @@
             },
             "url": {
               "raw": "{{baseUrl}}/movies/{{movieTmdbId}}/recommendations",
-              "host": ["{{baseUrl}}"],
-              "path": ["movies", "{{movieTmdbId}}", "recommendations"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "movies",
+                "{{movieTmdbId}}",
+                "recommendations"
+              ]
             },
             "description": "Recommended movies."
-          }
+          },
+          "response": []
         }
       ]
     },
@@ -409,15 +537,48 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"page\": 1,\n  \"limit\": 20,\n  \"sort\": \"popularity\",\n  \"order\": \"desc\",\n  \"search\": null,\n  \"genre_id\": [18],\n  \"provider_id\": [8],\n  \"country\": [\"IN\"],\n  \"spoken_language\": null,\n  \"original_language\": [\"hi\", \"en\"],\n  \"vote_average_gte\": 7,\n  \"vote_count_gte\": 100,\n  \"first_air_date_gte\": \"2015-01-01\",\n  \"first_air_date_lte\": null,\n  \"released_only\": true,\n  \"saved_only\": false,\n  \"watched_only\": false,\n  \"device_id\": \"{{deviceId}}\"\n}"
+              "raw": "{\n  \"page\": 1,\n  \"limit\": 20,\n  \"sort\": \"popularity\",\n  \"order\": \"desc\",\n  \"search\": null,\n  \"genre_id\": [18],\n  \"provider_id\": [8],\n  \"country\": [\"IN\"],\n  \"spoken_language\": null,\n  \"original_language\": [\"hi\", \"en\"],\n  \"vote_average_gte\": 7,\n  \"vote_count_gte\": 100,\n  \"first_air_date_gte\": \"2015-01-01\",\n  \"first_air_date_lte\": null,\n  \"released_only\": true,\n  \"saved_only\": false,\n  \"watched_only\": false,\n  \"include_total\": false,\n  \"device_id\": \"{{deviceId}}\"\n}"
             },
             "url": {
               "raw": "{{baseUrl}}/tv",
-              "host": ["{{baseUrl}}"],
-              "path": ["tv"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "tv"
+              ]
             },
-            "description": "Paginated TV list with filters.\n\n**Body params**\n- `page` (int, default 1)\n- `limit` (int, 1–50, default 20)\n- `sort`: popularity | vote_average | first_air_date | name\n- `order`: asc | desc\n- `search` (string)\n- `genre_id`: int or [int]\n- `provider_id`: int or [int]\n- `country`: \"IN\" or [\"IN\"]\n- `spoken_language` (string)\n- `original_language`: \"hi\" | \"hi|en\" | [\"hi\",\"en\"]\n- `vote_average_gte` (float)\n- `vote_count_gte` (int)\n- `first_air_date_gte` / `first_air_date_lte` (YYYY-MM-DD)\n- `released_only` (bool)\n- `saved_only` / `watched_only` (bool) — requires `device_id`\n- `device_id` (optional) → adds `is_watched` / `is_saved_for_later`"
-          }
+            "description": "Paginated TV list with filters.\n\n**Body params**\n- `page` (int, default 1)\n- `limit` (int, 1-50, default 20)\n- `sort`: popularity | vote_average | first_air_date | name\n- `order`: asc | desc\n- `search` (string)\n- `genre_id`: int or [int]\n- `provider_id`: int or [int]\n- `country`: \"IN\" or [\"IN\"]\n- `spoken_language` (string)\n- `original_language`: \"hi\" | \"hi|en\" | [\"hi\",\"en\"]\n- `vote_average_gte` (float)\n- `vote_count_gte` (int)\n- `first_air_date_gte` / `first_air_date_lte` (YYYY-MM-DD)\n- `released_only` (bool)\n- `saved_only` / `watched_only` (bool) -- requires `device_id`\n- `include_total` (bool, default false)\n- `device_id` (optional) -> adds `is_watched` / `is_saved_for_later`"
+          },
+          "response": []
+        },
+        {
+          "name": "List TV (Saved Only)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"page\": 1,\n  \"limit\": 20,\n  \"sort\": \"popularity\",\n  \"order\": \"desc\",\n  \"saved_only\": true,\n  \"device_id\": \"{{deviceId}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/tv",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "tv"
+              ]
+            },
+            "description": "TV shows saved for later by this device."
+          },
+          "response": []
         },
         {
           "name": "TV Detail",
@@ -436,11 +597,17 @@
             },
             "url": {
               "raw": "{{baseUrl}}/tv/{{tvTmdbId}}",
-              "host": ["{{baseUrl}}"],
-              "path": ["tv", "{{tvTmdbId}}"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "tv",
+                "{{tvTmdbId}}"
+              ]
             },
             "description": "Full TV show detail (includes seasons summary). Optional `device_id` returns watch/save flags."
-          }
+          },
+          "response": []
         },
         {
           "name": "TV Credits",
@@ -459,11 +626,18 @@
             },
             "url": {
               "raw": "{{baseUrl}}/tv/{{tvTmdbId}}/credits",
-              "host": ["{{baseUrl}}"],
-              "path": ["tv", "{{tvTmdbId}}", "credits"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "tv",
+                "{{tvTmdbId}}",
+                "credits"
+              ]
             },
             "description": "Cast and crew for a TV show."
-          }
+          },
+          "response": []
         },
         {
           "name": "TV Providers",
@@ -482,11 +656,18 @@
             },
             "url": {
               "raw": "{{baseUrl}}/tv/{{tvTmdbId}}/providers",
-              "host": ["{{baseUrl}}"],
-              "path": ["tv", "{{tvTmdbId}}", "providers"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "tv",
+                "{{tvTmdbId}}",
+                "providers"
+              ]
             },
             "description": "Watch providers for a TV show."
-          }
+          },
+          "response": []
         },
         {
           "name": "TV Similar",
@@ -505,11 +686,18 @@
             },
             "url": {
               "raw": "{{baseUrl}}/tv/{{tvTmdbId}}/similar",
-              "host": ["{{baseUrl}}"],
-              "path": ["tv", "{{tvTmdbId}}", "similar"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "tv",
+                "{{tvTmdbId}}",
+                "similar"
+              ]
             },
             "description": "Similar TV shows."
-          }
+          },
+          "response": []
         },
         {
           "name": "TV Seasons",
@@ -528,11 +716,18 @@
             },
             "url": {
               "raw": "{{baseUrl}}/tv/{{tvTmdbId}}/seasons",
-              "host": ["{{baseUrl}}"],
-              "path": ["tv", "{{tvTmdbId}}", "seasons"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "tv",
+                "{{tvTmdbId}}",
+                "seasons"
+              ]
             },
             "description": "All seasons (with episodes) for a TV show."
-          }
+          },
+          "response": []
         },
         {
           "name": "TV Episode Detail",
@@ -551,11 +746,21 @@
             },
             "url": {
               "raw": "{{baseUrl}}/tv/{{tvTmdbId}}/season/{{seasonNumber}}/episode/{{episodeNumber}}",
-              "host": ["{{baseUrl}}"],
-              "path": ["tv", "{{tvTmdbId}}", "season", "{{seasonNumber}}", "episode", "{{episodeNumber}}"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "tv",
+                "{{tvTmdbId}}",
+                "season",
+                "{{seasonNumber}}",
+                "episode",
+                "{{episodeNumber}}"
+              ]
             },
             "description": "Episode detail including guest cast and crew."
-          }
+          },
+          "response": []
         },
         {
           "name": "TV Videos",
@@ -574,11 +779,18 @@
             },
             "url": {
               "raw": "{{baseUrl}}/tv/{{tvTmdbId}}/videos",
-              "host": ["{{baseUrl}}"],
-              "path": ["tv", "{{tvTmdbId}}", "videos"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "tv",
+                "{{tvTmdbId}}",
+                "videos"
+              ]
             },
             "description": "Trailers / videos only."
-          }
+          },
+          "response": []
         },
         {
           "name": "TV Images",
@@ -597,11 +809,18 @@
             },
             "url": {
               "raw": "{{baseUrl}}/tv/{{tvTmdbId}}/images",
-              "host": ["{{baseUrl}}"],
-              "path": ["tv", "{{tvTmdbId}}", "images"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "tv",
+                "{{tvTmdbId}}",
+                "images"
+              ]
             },
             "description": "Image gallery for a TV show."
-          }
+          },
+          "response": []
         },
         {
           "name": "TV Keywords",
@@ -620,11 +839,18 @@
             },
             "url": {
               "raw": "{{baseUrl}}/tv/{{tvTmdbId}}/keywords",
-              "host": ["{{baseUrl}}"],
-              "path": ["tv", "{{tvTmdbId}}", "keywords"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "tv",
+                "{{tvTmdbId}}",
+                "keywords"
+              ]
             },
             "description": "Keywords for a TV show."
-          }
+          },
+          "response": []
         },
         {
           "name": "TV Recommendations",
@@ -643,11 +869,52 @@
             },
             "url": {
               "raw": "{{baseUrl}}/tv/{{tvTmdbId}}/recommendations",
-              "host": ["{{baseUrl}}"],
-              "path": ["tv", "{{tvTmdbId}}", "recommendations"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "tv",
+                "{{tvTmdbId}}",
+                "recommendations"
+              ]
             },
             "description": "Recommended TV shows."
-          }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "People",
+      "item": [
+        {
+          "name": "Person Detail",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/people/{{personTmdbId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "people",
+                "{{personTmdbId}}"
+              ]
+            },
+            "description": "Person profile + filmography (movies & TV credits).\n\nPath: `tmdb_id` of the person (e. for example 287 = Brad Pitt)."
+          },
+          "response": []
         }
       ]
     },
@@ -671,11 +938,16 @@
             },
             "url": {
               "raw": "{{baseUrl}}/genres",
-              "host": ["{{baseUrl}}"],
-              "path": ["genres"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "genres"
+              ]
             },
             "description": "`type`: movie | tv (default movie)."
-          }
+          },
+          "response": []
         },
         {
           "name": "Genres - TV",
@@ -694,11 +966,16 @@
             },
             "url": {
               "raw": "{{baseUrl}}/genres",
-              "host": ["{{baseUrl}}"],
-              "path": ["genres"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "genres"
+              ]
             },
             "description": "TV genres list."
-          }
+          },
+          "response": []
         },
         {
           "name": "Providers - Movie",
@@ -717,11 +994,16 @@
             },
             "url": {
               "raw": "{{baseUrl}}/providers",
-              "host": ["{{baseUrl}}"],
-              "path": ["providers"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "providers"
+              ]
             },
             "description": "Watch providers for filter UI.\n\n- `type`: movie | tv\n- `country`: \"IN\" or [\"IN\",\"US\"]"
-          }
+          },
+          "response": []
         },
         {
           "name": "Providers - TV",
@@ -740,11 +1022,16 @@
             },
             "url": {
               "raw": "{{baseUrl}}/providers",
-              "host": ["{{baseUrl}}"],
-              "path": ["providers"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "providers"
+              ]
             },
             "description": "TV watch providers for filter UI."
-          }
+          },
+          "response": []
         }
       ]
     },
@@ -768,11 +1055,17 @@
             },
             "url": {
               "raw": "{{baseUrl}}/user-state/watch",
-              "host": ["{{baseUrl}}"],
-              "path": ["user-state", "watch"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "user-state",
+                "watch"
+              ]
             },
             "description": "Required: `device_id`, `media_type` (movie|tv), `tmdb_id`, `is_watched`."
-          }
+          },
+          "response": []
         },
         {
           "name": "Unset Movie Watched",
@@ -791,10 +1084,16 @@
             },
             "url": {
               "raw": "{{baseUrl}}/user-state/watch",
-              "host": ["{{baseUrl}}"],
-              "path": ["user-state", "watch"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "user-state",
+                "watch"
+              ]
             }
-          }
+          },
+          "response": []
         },
         {
           "name": "Set TV Watched",
@@ -813,10 +1112,16 @@
             },
             "url": {
               "raw": "{{baseUrl}}/user-state/watch",
-              "host": ["{{baseUrl}}"],
-              "path": ["user-state", "watch"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "user-state",
+                "watch"
+              ]
             }
-          }
+          },
+          "response": []
         },
         {
           "name": "Unset TV Watched",
@@ -835,10 +1140,16 @@
             },
             "url": {
               "raw": "{{baseUrl}}/user-state/watch",
-              "host": ["{{baseUrl}}"],
-              "path": ["user-state", "watch"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "user-state",
+                "watch"
+              ]
             }
-          }
+          },
+          "response": []
         },
         {
           "name": "Save Movie For Later",
@@ -857,11 +1168,17 @@
             },
             "url": {
               "raw": "{{baseUrl}}/user-state/save-for-later",
-              "host": ["{{baseUrl}}"],
-              "path": ["user-state", "save-for-later"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "user-state",
+                "save-for-later"
+              ]
             },
             "description": "Required: `device_id`, `media_type` (movie|tv), `tmdb_id`, `is_saved_for_later`."
-          }
+          },
+          "response": []
         },
         {
           "name": "Unsave Movie For Later",
@@ -880,10 +1197,16 @@
             },
             "url": {
               "raw": "{{baseUrl}}/user-state/save-for-later",
-              "host": ["{{baseUrl}}"],
-              "path": ["user-state", "save-for-later"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "user-state",
+                "save-for-later"
+              ]
             }
-          }
+          },
+          "response": []
         },
         {
           "name": "Save TV For Later",
@@ -902,55 +1225,16 @@
             },
             "url": {
               "raw": "{{baseUrl}}/user-state/save-for-later",
-              "host": ["{{baseUrl}}"],
-              "path": ["user-state", "save-for-later"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "user-state",
+                "save-for-later"
+              ]
             }
-          }
-        },
-        {
-          "name": "Get My List (Saved)",
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json",
-                "type": "text"
-              }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"device_id\": \"{{deviceId}}\",\n  \"filter\": \"saved\",\n  \"media_type\": null,\n  \"page\": 1,\n  \"limit\": 20\n}"
-            },
-            "url": {
-              "raw": "{{baseUrl}}/user-state/list",
-              "host": ["{{baseUrl}}"],
-              "path": ["user-state", "list"]
-            },
-            "description": "List saved / watched media for My List screens.\n\n**Body**\n- `device_id` (required)\n- `filter`: saved | watched | all (default saved)\n- `media_type`: movie | tv | null (both)\n- `page`, `limit`"
-          }
-        },
-        {
-          "name": "Get Watched",
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json",
-                "type": "text"
-              }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"device_id\": \"{{deviceId}}\",\n  \"filter\": \"watched\",\n  \"media_type\": null,\n  \"page\": 1,\n  \"limit\": 20\n}"
-            },
-            "url": {
-              "raw": "{{baseUrl}}/user-state/list",
-              "host": ["{{baseUrl}}"],
-              "path": ["user-state", "list"]
-            }
-          }
+          },
+          "response": []
         },
         {
           "name": "Unsave TV For Later",
@@ -969,10 +1253,257 @@
             },
             "url": {
               "raw": "{{baseUrl}}/user-state/save-for-later",
-              "host": ["{{baseUrl}}"],
-              "path": ["user-state", "save-for-later"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "user-state",
+                "save-for-later"
+              ]
             }
-          }
+          },
+          "response": []
+        },
+        {
+          "name": "Get My List (Saved)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"device_id\": \"{{deviceId}}\",\n  \"filter\": \"saved\",\n  \"media_type\": null,\n  \"page\": 1,\n  \"limit\": 20\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/user-state/list",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "user-state",
+                "list"
+              ]
+            },
+            "description": "List saved / watched media for My List screens.\n\n**Body**\n- `device_id` (required)\n- `filter`: saved | watched | all (default saved)\n- `media_type`: movie | tv | null (both)\n- `page`, `limit`"
+          },
+          "response": []
+        },
+        {
+          "name": "Get Watched",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"device_id\": \"{{deviceId}}\",\n  \"filter\": \"watched\",\n  \"media_type\": null,\n  \"page\": 1,\n  \"limit\": 20\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/user-state/list",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "user-state",
+                "list"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get All User State",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"device_id\": \"{{deviceId}}\",\n  \"filter\": \"all\",\n  \"media_type\": null,\n  \"page\": 1,\n  \"limit\": 20\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/user-state/list",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "user-state",
+                "list"
+              ]
+            },
+            "description": "`filter=all` returns both saved and watched items."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Admin Sync (Daily Cron)",
+      "item": [
+        {
+          "name": "1. Status",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"day\": \"{{syncDay}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/admin/sync/status",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "sync",
+                "status"
+              ]
+            },
+            "description": "Queue stats for IST today (or optional `day`).\n\nRequires admin API key (`ADMIN_API_KEY` or same as `API_KEY`).\nEmpty `day` = today (IST)."
+          },
+          "response": []
+        },
+        {
+          "name": "2. Enqueue",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/admin/sync/enqueue",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "sync",
+                "enqueue"
+              ]
+            },
+            "description": "Fill queue for today (IST):\n- movie/tv/person changes intersect DB\n- discover today + providers_config\n\nCan take 1-3 minutes."
+          },
+          "response": []
+        },
+        {
+          "name": "2b. Enqueue (specific day)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"day\": \"2026-08-03\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/admin/sync/enqueue",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "sync",
+                "enqueue"
+              ]
+            },
+            "description": "Optional: enqueue for a specific YYYY-MM-DD day."
+          },
+          "response": []
+        },
+        {
+          "name": "3. Process",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"limit\": {{processLimit}}\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/admin/sync/process",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "sync",
+                "process"
+              ]
+            },
+            "description": "Process up to `limit` queue items (1-20).\nRepeat until pending=0."
+          },
+          "response": []
+        },
+        {
+          "name": "4. Run (enqueue + first batch)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"limit\": {{processLimit}}\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/admin/sync/run",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "sync",
+                "run"
+              ]
+            },
+            "description": "One-shot test: enqueue + process first `limit` items only.\nFor full drain, still call Process repeatedly."
+          },
+          "response": []
         }
       ]
     }
