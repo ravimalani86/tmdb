@@ -18,18 +18,21 @@ final class SyncProcessService
     ) {
     }
 
-    public function process(int $limit = 3): array
+    public function process(int $limit = 3, ?string $mediaType = null): array
     {
-        $limit = max(1, min(20, $limit));
+        $limit = max(1, min(50, $limit));
+        $mediaType = $this->normalizeMediaType($mediaType);
         $stats = [
             'done' => 0,
             'failed' => 0,
             'people_enqueued' => 0,
             'processed' => 0,
+            'limit' => $limit,
+            'media_type' => $mediaType,
             'tmdb_keys' => $this->tmdb->keyCount(),
         ];
 
-        $rows = $this->claim($limit);
+        $rows = $this->claim($limit, $mediaType);
         foreach ($rows as $row) {
             $stats['processed']++;
             try {
@@ -70,19 +73,33 @@ final class SyncProcessService
         return $stats;
     }
 
-    /** @return list<array<string, mixed>> */
-    private function claim(int $limit): array
+    /** @return 'movie'|'tv'|'person'|null */
+    private function normalizeMediaType(?string $mediaType): ?string
     {
+        if ($mediaType === null || $mediaType === '') {
+            return null;
+        }
+        $mediaType = strtolower(trim($mediaType));
+        return in_array($mediaType, ['movie', 'tv', 'person'], true) ? $mediaType : null;
+    }
+
+    /** @return list<array<string, mixed>> */
+    private function claim(int $limit, ?string $mediaType = null): array
+    {
+        $typeSql = $mediaType !== null ? ' AND media_type = :mt' : '';
         try {
             $stmt = $this->db->prepare(
                 'SELECT id FROM media_sync_queue
-                 WHERE status = \'pending\' AND attempts < :maxa
+                 WHERE status = \'pending\' AND attempts < :maxa' . $typeSql . '
                  ORDER BY id ASC
                  LIMIT :lim
                  FOR UPDATE SKIP LOCKED'
             );
             $stmt->bindValue('maxa', self::MAX_ATTEMPTS, PDO::PARAM_INT);
             $stmt->bindValue('lim', $limit, PDO::PARAM_INT);
+            if ($mediaType !== null) {
+                $stmt->bindValue('mt', $mediaType);
+            }
             $this->db->beginTransaction();
             $stmt->execute();
             $ids = array_map('intval', $stmt->fetchAll(PDO::FETCH_COLUMN));
@@ -102,12 +119,25 @@ final class SyncProcessService
                 $this->db->rollBack();
             }
             // Fallback without SKIP LOCKED
-            $stmt = $this->db->query(
-                'SELECT id FROM media_sync_queue
-                 WHERE status = \'pending\' AND attempts < ' . self::MAX_ATTEMPTS . '
-                 ORDER BY id ASC
-                 LIMIT ' . (int) $limit
-            );
+            if ($mediaType !== null) {
+                $stmt = $this->db->prepare(
+                    'SELECT id FROM media_sync_queue
+                     WHERE status = \'pending\' AND attempts < :maxa AND media_type = :mt
+                     ORDER BY id ASC
+                     LIMIT :lim'
+                );
+                $stmt->bindValue('maxa', self::MAX_ATTEMPTS, PDO::PARAM_INT);
+                $stmt->bindValue('mt', $mediaType);
+                $stmt->bindValue('lim', $limit, PDO::PARAM_INT);
+                $stmt->execute();
+            } else {
+                $stmt = $this->db->query(
+                    'SELECT id FROM media_sync_queue
+                     WHERE status = \'pending\' AND attempts < ' . self::MAX_ATTEMPTS . '
+                     ORDER BY id ASC
+                     LIMIT ' . (int) $limit
+                );
+            }
             $ids = array_map('intval', $stmt->fetchAll(PDO::FETCH_COLUMN));
             if ($ids === []) {
                 return [];

@@ -570,21 +570,37 @@ final class SyncMediaWriter
     {
         $this->db->prepare('DELETE FROM images WHERE media_type = ? AND media_id = ?')
             ->execute([$mediaType, $mediaId]);
+        // uq_image = (media_type, media_id, file_path, image_type)
+        // TMDB sometimes returns the same file_path twice (different iso_639_1).
         $ins = $this->db->prepare(
             'INSERT INTO images (media_type, media_id, file_path, width, height, aspect_ratio, vote_average, vote_count, image_type, iso_639_1, last_synced_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             ON DUPLICATE KEY UPDATE
+               width = VALUES(width),
+               height = VALUES(height),
+               aspect_ratio = VALUES(aspect_ratio),
+               vote_average = VALUES(vote_average),
+               vote_count = VALUES(vote_count),
+               iso_639_1 = VALUES(iso_639_1),
+               last_synced_at = VALUES(last_synced_at)'
         );
         $now = gmdate('Y-m-d H:i:s');
         foreach (['posters' => 'poster', 'backdrops' => 'backdrop'] as $key => $type) {
             $n = 0;
+            $seen = [];
             foreach ($images[$key] ?? [] as $img) {
                 if (!is_array($img) || empty($img['file_path']) || $n >= 20) {
                     continue;
                 }
+                $fp = (string) $img['file_path'];
+                if (isset($seen[$fp])) {
+                    continue;
+                }
+                $seen[$fp] = true;
                 $ins->execute([
                     $mediaType,
                     $mediaId,
-                    $img['file_path'],
+                    $fp,
                     $img['width'] ?? null,
                     $img['height'] ?? null,
                     $img['aspect_ratio'] ?? null,

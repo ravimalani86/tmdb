@@ -102,6 +102,9 @@ try {
                 'POST /user-state/save-for-later',
                 'POST /user-state/list',
                 'POST /admin/sync/status',
+                'POST /admin/sync/queue-overview',
+                'POST /admin/sync/config',
+                'POST /admin/sync/config/save',
                 'POST /admin/sync/enqueue',
                 'POST /admin/sync/process',
                 'POST /admin/sync/run',
@@ -117,10 +120,39 @@ try {
         }
         $syncAdmin = new SyncAdminRepository($pdo, $config);
         $day = query_string($input, 'day');
-        $limit = query_int($input, 'limit', 3, 1, 20);
+        $payloadHasLimit = array_key_exists('limit', $input);
+        $payloadLimit = $payloadHasLimit ? query_int($input, 'limit', 3, 1, 50) : null;
+        $mediaType = query_string($input, 'media_type');
+        if ($mediaType !== null && !in_array(strtolower($mediaType), ['movie', 'tv', 'person'], true)) {
+            json_error('media_type must be movie, tv, or person', 400);
+        }
+        if ($mediaType !== null) {
+            $mediaType = strtolower($mediaType);
+        }
 
         if ($path === '/admin/sync/status') {
             json_response($syncAdmin->status($day));
+        }
+
+        if ($path === '/admin/sync/queue-overview') {
+            json_response($syncAdmin->queueOverview());
+        }
+
+        if ($path === '/admin/sync/config') {
+            json_response(['config' => $syncAdmin->getCronConfig()]);
+        }
+
+        if ($path === '/admin/sync/config/save') {
+            if (!$payloadHasLimit) {
+                json_error('limit is required', 400);
+            }
+            try {
+                $saved = $syncAdmin->saveCronConfig((int) $payloadLimit, $mediaType);
+                json_response(['action' => 'config_saved', 'config' => $saved]);
+            } catch (Throwable $e) {
+                error_log('admin sync config save: ' . $e->getMessage());
+                json_error('Config save failed: ' . $e->getMessage(), 500);
+            }
         }
 
         if ($path === '/admin/sync/enqueue') {
@@ -134,7 +166,7 @@ try {
 
         if ($path === '/admin/sync/process') {
             try {
-                json_response($syncAdmin->process($limit));
+                json_response($syncAdmin->process($payloadLimit, $mediaType));
             } catch (Throwable $e) {
                 error_log('admin sync process: ' . $e->getMessage());
                 json_error('Process failed: ' . $e->getMessage(), 500);
@@ -143,7 +175,7 @@ try {
 
         if ($path === '/admin/sync/run') {
             try {
-                json_response($syncAdmin->run($day, $limit));
+                json_response($syncAdmin->run($day, $payloadLimit, $mediaType));
             } catch (Throwable $e) {
                 error_log('admin sync run: ' . $e->getMessage());
                 json_error('Run failed: ' . $e->getMessage(), 500);

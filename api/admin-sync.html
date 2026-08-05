@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>TMDB Sync Admin</title>
+  <style>
+    :root {
+      --bg: #0f1419;
+      --panel: #1a222c;
+      --border: #2c3845;
+      --text: #e8eef4;
+      --muted: #8b9aab;
+      --accent: #3d9cf0;
+      --ok: #3dba7a;
+      --warn: #e0a44a;
+      --bad: #e05a5a;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Segoe UI", system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.45;
+    }
+    .wrap { max-width: 920px; margin: 0 auto; padding: 24px 16px 48px; }
+    h1 { font-size: 1.35rem; margin: 0 0 4px; font-weight: 650; }
+    .sub { color: var(--muted); font-size: 0.9rem; margin-bottom: 20px; }
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 16px 18px;
+      margin-bottom: 16px;
+    }
+    .panel h2 {
+      margin: 0 0 12px;
+      font-size: 0.95rem;
+      font-weight: 600;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+    .row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+    label { font-size: 0.9rem; color: var(--muted); }
+    input[type="text"], input[type="password"], input[type="number"] {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      color: var(--text);
+      border-radius: 6px;
+      padding: 8px 10px;
+      font-size: 0.95rem;
+      min-width: 0;
+    }
+    input[type="number"] { width: 100px; }
+    input[type="password"], #apiBase { flex: 1; min-width: 180px; }
+    button {
+      background: var(--accent);
+      color: #fff;
+      border: 0;
+      border-radius: 6px;
+      padding: 8px 14px;
+      font-size: 0.9rem;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
+    button.secondary { background: #2c3845; }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    @media (max-width: 700px) { .grid { grid-template-columns: 1fr; } }
+    table { width: 100%; border-collapse: collapse; font-size: 0.95rem; }
+    th, td { text-align: left; padding: 8px 6px; border-bottom: 1px solid var(--border); }
+    th { color: var(--muted); font-weight: 560; font-size: 0.8rem; }
+    td.num { text-align: right; font-variant-numeric: tabular-nums; font-weight: 600; }
+    .meta { color: var(--muted); font-size: 0.8rem; margin-top: 10px; }
+    .msg { margin-top: 10px; font-size: 0.9rem; }
+    .msg.ok { color: var(--ok); }
+    .msg.err { color: var(--bad); }
+    .radios { display: flex; flex-wrap: wrap; gap: 12px 16px; margin: 8px 0 12px; }
+    .radios label { display: flex; align-items: center; gap: 6px; color: var(--text); cursor: pointer; }
+    .hint { color: var(--muted); font-size: 0.82rem; margin: 0 0 12px; }
+    .pill {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 999px;
+      background: #243040;
+      font-size: 0.75rem;
+      color: var(--muted);
+    }
+    .pill.live { color: var(--ok); }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>TMDB Sync Admin</h1>
+    <p class="sub">Queue overview refreshes every 20s. Process cron reads saved config first.</p>
+
+    <div class="panel">
+      <h2>Connection</h2>
+      <div class="row">
+        <label for="apiBase">API base</label>
+        <input id="apiBase" type="text" placeholder="https://app.myappworld.in/tmdb/api" />
+      </div>
+      <div class="row" style="margin-top:10px">
+        <label for="apiKey">X-API-Key</label>
+        <input id="apiKey" type="password" placeholder="Admin / API key" autocomplete="off" />
+        <button type="button" class="secondary" id="btnSaveConn">Save</button>
+      </div>
+      <div class="msg" id="connMsg"></div>
+    </div>
+
+    <div class="grid">
+      <div class="panel">
+        <h2>Pending by media_type <span class="pill live" id="livePill">live 20s</span></h2>
+        <table>
+          <thead><tr><th>media_type</th><th style="text-align:right">cnt</th></tr></thead>
+          <tbody id="pendingBody">
+            <tr><td colspan="2" style="color:var(--muted)">Waiting…</td></tr>
+          </tbody>
+        </table>
+        <div class="meta" id="pendingMeta"></div>
+      </div>
+      <div class="panel">
+        <h2>By status</h2>
+        <table>
+          <thead><tr><th>status</th><th style="text-align:right">cnt</th></tr></thead>
+          <tbody id="statusBody">
+            <tr><td colspan="2" style="color:var(--muted)">Waiting…</td></tr>
+          </tbody>
+        </table>
+        <div class="meta" id="statusMeta"></div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h2>Process cron config</h2>
+      <p class="hint">Priority: <strong>admin config</strong> → payload → default. Media type <strong>All</strong> = empty (all types).</p>
+      <div class="row">
+        <label for="processLimit">limit (required, 1–50)</label>
+        <input id="processLimit" type="number" min="1" max="50" value="50" required />
+      </div>
+      <div style="margin-top:12px">
+        <label>media_type (optional)</label>
+        <div class="radios">
+          <label><input type="radio" name="mediaType" value="" checked /> All</label>
+          <label><input type="radio" name="mediaType" value="movie" /> movie</label>
+          <label><input type="radio" name="mediaType" value="tv" /> tv</label>
+          <label><input type="radio" name="mediaType" value="person" /> person</label>
+        </div>
+      </div>
+      <div class="row">
+        <button type="button" id="btnSaveConfig">Save config</button>
+        <button type="button" class="secondary" id="btnLoadConfig">Reload</button>
+        <button type="button" class="secondary" id="btnRunProcess">Run process once</button>
+      </div>
+      <div class="msg" id="configMsg"></div>
+      <div class="meta" id="configMeta"></div>
+    </div>
+  </div>
+
+  <script>
+    const LS_BASE = 'tmdb_admin_api_base';
+    const LS_KEY = 'tmdb_admin_api_key';
+
+    const $ = (id) => document.getElementById(id);
+
+    function defaultBase() {
+      const path = location.pathname.replace(/\/[^/]*$/, '');
+      return location.origin + path;
+    }
+
+    function loadConn() {
+      $('apiBase').value = localStorage.getItem(LS_BASE) || defaultBase();
+      $('apiKey').value = localStorage.getItem(LS_KEY) || '';
+    }
+
+    function saveConn() {
+      localStorage.setItem(LS_BASE, $('apiBase').value.trim().replace(/\/$/, ''));
+      localStorage.setItem(LS_KEY, $('apiKey').value.trim());
+      $('connMsg').className = 'msg ok';
+      $('connMsg').textContent = 'Connection saved locally.';
+      refreshOverview();
+      loadConfig();
+    }
+
+    async function api(path, body = {}) {
+      const base = ($('apiBase').value.trim() || defaultBase()).replace(/\/$/, '');
+      const key = $('apiKey').value.trim();
+      if (!key) throw new Error('Set X-API-Key first');
+      const res = await fetch(base + path, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-API-Key': key,
+        },
+        body: JSON.stringify(body),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(data.error || data.message || ('HTTP ' + res.status));
+      }
+      return data;
+    }
+
+    function fillTable(tbodyId, map, emptyLabel) {
+      const tbody = $(tbodyId);
+      const keys = Object.keys(map || {});
+      if (!keys.length) {
+        tbody.innerHTML = '<tr><td colspan="2" style="color:var(--muted)">' + emptyLabel + '</td></tr>';
+        return;
+      }
+      keys.sort();
+      tbody.innerHTML = keys.map((k) =>
+        '<tr><td>' + k + '</td><td class="num">' + map[k] + '</td></tr>'
+      ).join('');
+    }
+
+    async function refreshOverview() {
+      try {
+        const data = await api('/admin/sync/queue-overview', {});
+        fillTable('pendingBody', data.pending_by_type, 'No pending rows');
+        fillTable('statusBody', data.by_status, 'No rows');
+        const now = new Date().toLocaleTimeString();
+        $('pendingMeta').textContent = 'pending total: ' + (data.pending_total || 0) + ' · updated ' + now;
+        $('statusMeta').textContent = 'queue total: ' + (data.total || 0) + ' · updated ' + now;
+      } catch (e) {
+        $('pendingBody').innerHTML = '<tr><td colspan="2" style="color:var(--bad)">' + e.message + '</td></tr>';
+        $('statusBody').innerHTML = '<tr><td colspan="2" style="color:var(--bad)">' + e.message + '</td></tr>';
+      }
+    }
+
+    function selectedMediaType() {
+      const el = document.querySelector('input[name="mediaType"]:checked');
+      return el ? el.value : '';
+    }
+
+    function applyConfigForm(cfg) {
+      const limit = cfg && cfg.process_limit != null ? cfg.process_limit : 50;
+      $('processLimit').value = limit;
+      const mt = (cfg && cfg.media_type) ? cfg.media_type : '';
+      const radio = document.querySelector('input[name="mediaType"][value="' + mt + '"]')
+        || document.querySelector('input[name="mediaType"][value=""]');
+      if (radio) radio.checked = true;
+      $('configMeta').textContent = cfg && cfg.updated_at
+        ? 'Last saved: ' + cfg.updated_at + ' (UTC)'
+        : 'No saved config yet (defaults apply until save).';
+    }
+
+    async function loadConfig() {
+      try {
+        const data = await api('/admin/sync/config', {});
+        applyConfigForm(data.config || {});
+        $('configMsg').className = 'msg';
+        $('configMsg').textContent = '';
+      } catch (e) {
+        $('configMsg').className = 'msg err';
+        $('configMsg').textContent = e.message;
+      }
+    }
+
+    async function saveConfig() {
+      const limit = parseInt($('processLimit').value, 10);
+      if (!limit || limit < 1 || limit > 50) {
+        $('configMsg').className = 'msg err';
+        $('configMsg').textContent = 'limit must be 1–50';
+        return;
+      }
+      const body = { limit };
+      const mt = selectedMediaType();
+      if (mt) body.media_type = mt;
+      try {
+        const data = await api('/admin/sync/config/save', body);
+        applyConfigForm(data.config || {});
+        $('configMsg').className = 'msg ok';
+        $('configMsg').textContent = 'Config saved. Process cron will use these values.';
+      } catch (e) {
+        $('configMsg').className = 'msg err';
+        $('configMsg').textContent = e.message;
+      }
+    }
+
+    async function runProcessOnce() {
+      try {
+        $('configMsg').className = 'msg';
+        $('configMsg').textContent = 'Running process…';
+        const data = await api('/admin/sync/process', {});
+        const p = data.process || {};
+        $('configMsg').className = 'msg ok';
+        $('configMsg').textContent =
+          'Process done: processed=' + (p.processed || 0) +
+          ' done=' + (p.done || 0) +
+          ' failed=' + (p.failed || 0) +
+          ' limit=' + (p.limit ?? '?') +
+          ' media_type=' + (p.media_type || 'all') +
+          ' from=' + JSON.stringify(p.resolved_from || {});
+        refreshOverview();
+      } catch (e) {
+        $('configMsg').className = 'msg err';
+        $('configMsg').textContent = e.message;
+      }
+    }
+
+    $('btnSaveConn').addEventListener('click', saveConn);
+    $('btnSaveConfig').addEventListener('click', saveConfig);
+    $('btnLoadConfig').addEventListener('click', loadConfig);
+    $('btnRunProcess').addEventListener('click', runProcessOnce);
+
+    loadConn();
+    if ($('apiKey').value.trim()) {
+      refreshOverview();
+      loadConfig();
+    }
+    setInterval(() => {
+      if ($('apiKey').value.trim()) refreshOverview();
+    }, 20000);
+  </script>
+</body>
+</html>
