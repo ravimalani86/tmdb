@@ -94,7 +94,7 @@
 <body>
   <div class="wrap">
     <h1>TMDB Sync Admin</h1>
-    <p class="sub">Queue overview refreshes every 20s. Process cron reads saved config first.</p>
+    <p class="sub">Queue overview refreshes every 10s. Process cron reads saved config first.</p>
 
     <div class="panel">
       <h2>Connection</h2>
@@ -112,7 +112,7 @@
 
     <div class="grid">
       <div class="panel">
-        <h2>Pending by media_type <span class="pill live" id="livePill">live 20s</span></h2>
+        <h2>Pending by media_type <span class="pill live" id="livePill">live 10s</span></h2>
         <table>
           <thead><tr><th>media_type</th><th style="text-align:right">cnt</th></tr></thead>
           <tbody id="pendingBody">
@@ -137,8 +137,8 @@
       <h2>Process cron config</h2>
       <p class="hint">Priority: <strong>admin config</strong> → payload → default. Media type <strong>All</strong> = empty (all types).</p>
       <div class="row">
-        <label for="processLimit">limit (required, 1–50)</label>
-        <input id="processLimit" type="number" min="1" max="50" value="50" required />
+        <label for="processLimit">limit (required, 1–450)</label>
+        <input id="processLimit" type="number" min="1" max="450" value="50" required />
       </div>
       <div style="margin-top:12px">
         <label>media_type (optional)</label>
@@ -261,9 +261,9 @@
 
     async function saveConfig() {
       const limit = parseInt($('processLimit').value, 10);
-      if (!limit || limit < 1 || limit > 50) {
+      if (!limit || limit < 1 || limit > 450) {
         $('configMsg').className = 'msg err';
-        $('configMsg').textContent = 'limit must be 1–50';
+        $('configMsg').textContent = 'limit must be 1–450';
         return;
       }
       const body = { limit };
@@ -313,7 +313,7 @@
     }
     setInterval(() => {
       if ($('apiKey').value.trim()) refreshOverview();
-    }, 20000);
+    }, 10000);
   </script>
 </body>
 </html>

@@ -182,7 +182,7 @@ final class SyncAdminRepository
         }
         $limit = (int) ($row['process_limit'] ?? 0);
         return [
-            'process_limit' => $limit > 0 ? max(1, min(50, $limit)) : null,
+            'process_limit' => $limit > 0 ? max(1, min(450, $limit)) : null,
             'media_type' => $mt,
             'updated_at' => $row['updated_at'] ?? null,
         ];
@@ -190,7 +190,7 @@ final class SyncAdminRepository
 
     public function saveCronConfig(int $processLimit, ?string $mediaType): array
     {
-        $processLimit = max(1, min(50, $processLimit));
+        $processLimit = max(1, min(450, $processLimit));
         if ($mediaType !== null) {
             $mediaType = strtolower(trim($mediaType));
             if ($mediaType === '' || $mediaType === 'all') {
@@ -229,7 +229,7 @@ final class SyncAdminRepository
             $limit = $payloadLimit;
             $from['limit'] = 'payload';
         }
-        $limit = max(1, min(50, $limit));
+        $limit = max(1, min(450, $limit));
 
         $mediaType = null;
         $dbMt = $cfg['media_type'] ?? null;

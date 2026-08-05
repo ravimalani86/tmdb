@@ -121,7 +121,7 @@ try {
         $syncAdmin = new SyncAdminRepository($pdo, $config);
         $day = query_string($input, 'day');
         $payloadHasLimit = array_key_exists('limit', $input);
-        $payloadLimit = $payloadHasLimit ? query_int($input, 'limit', 3, 1, 50) : null;
+        $payloadLimit = $payloadHasLimit ? query_int($input, 'limit', 3, 1, 450) : null;
         $mediaType = query_string($input, 'media_type');
         if ($mediaType !== null && !in_array(strtolower($mediaType), ['movie', 'tv', 'person'], true)) {
             json_error('media_type must be movie, tv, or person', 400);

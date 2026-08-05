@@ -20,7 +20,7 @@ final class SyncProcessService
 
     public function process(int $limit = 3, ?string $mediaType = null): array
     {
-        $limit = max(1, min(50, $limit));
+        $limit = max(1, min(450, $limit));
         $mediaType = $this->normalizeMediaType($mediaType);
         $stats = [
             'done' => 0,
