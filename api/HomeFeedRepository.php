@@ -3,7 +3,7 @@
 declare(strict_types=1);
 
 /**
- * Metflix Home feed — bootstrap (first paint) + per-row APIs.
+ * Movflik Home feed — bootstrap (first paint) + per-row APIs.
  *
  * Perf:
  * - Bootstrap runs only trending + new_releases (+ my_list) — not every genre row.
@@ -374,7 +374,7 @@ final class HomeFeedRepository
 
     private function cacheDir(): string
     {
-        $dir = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'metflix_home_feed';
+        $dir = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'movflik_home_feed';
         if (!is_dir($dir)) {
             @mkdir($dir, 0775, true);
         }

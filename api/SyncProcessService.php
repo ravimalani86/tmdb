@@ -9,6 +9,8 @@ declare(strict_types=1);
 final class SyncProcessService
 {
     private const MAX_ATTEMPTS = 3;
+    private const BATCH_HOLD_EVERY = 50;
+    private const BATCH_HOLD_SECONDS = 30;
 
     public function __construct(
         private PDO $db,
@@ -33,7 +35,8 @@ final class SyncProcessService
         ];
 
         $rows = $this->claim($limit, $mediaType);
-        foreach ($rows as $row) {
+        $rowCount = count($rows);
+        foreach ($rows as $index => $row) {
             $stats['processed']++;
             try {
                 $this->db->beginTransaction();
@@ -67,6 +70,13 @@ final class SyncProcessService
                 }
                 $this->markFailed((int) $row['id'], (int) $row['attempts'], $e->getMessage());
                 $stats['failed']++;
+            }
+
+            if (
+                $stats['processed'] % self::BATCH_HOLD_EVERY === 0
+                && ($index + 1) < $rowCount
+            ) {
+                sleep(self::BATCH_HOLD_SECONDS);
             }
         }
 

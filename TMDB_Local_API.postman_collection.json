@@ -187,7 +187,7 @@
                 "feed"
               ]
             },
-            "description": "Legacy full Metflix Home feed (hero + all CTR rows + genres).\nPrefer `/home/bootstrap` + `/home/row` for faster first paint.\n\n**Body**\n- `filter`: all | movies | tv (default all)\n- `country`: \"IN\" or [\"IN\"]\n- `device_id` (optional) -> user flags + my_list row"
+            "description": "Legacy full Movflik Home feed (hero + all CTR rows + genres).\nPrefer `/home/bootstrap` + `/home/row` for faster first paint.\n\n**Body**\n- `filter`: all | movies | tv (default all)\n- `country`: \"IN\" or [\"IN\"]\n- `device_id` (optional) -> user flags + my_list row"
           },
           "response": []
         }

@@ -7,12 +7,12 @@
   "maintenance_mode": false,
 
   "release": {
-    "play_store_package_id": "com.growdev.metflix",
-    "play_store_url": "https://play.google.com/store/apps/details?id=com.growdev.metflix",
-    "update_title": "Update Metflix",
+    "play_store_package_id": "com.growdev.movflik",
+    "play_store_url": "https://play.google.com/store/apps/details?id=com.growdev.movflik",
+    "update_title": "Update Movflik",
     "update_message": "A new version is available on Play Store. Update now for the latest features and fixes.",
-    "force_update_message": "Please update Metflix to continue using the app.",
-    "maintenance_message": "Metflix is under maintenance. Please try again later."
+    "force_update_message": "Please update Movflik to continue using the app.",
+    "maintenance_message": "Movflik is under maintenance. Please try again later."
   },
 
   "app": {
@@ -217,7 +217,7 @@
         "format": "none",
         "note": "Uses main_shell banner when tab active"
       },
-      "my_metflix": {
+      "my_movflik": {
         "enabled": false,
         "format": "none",
         "note": "Uses main_shell banner when tab active"

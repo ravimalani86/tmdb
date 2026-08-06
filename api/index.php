@@ -187,7 +187,7 @@ try {
     }
 
     if ($path === '/app/config') {
-        $configPath = __DIR__ . DIRECTORY_SEPARATOR . 'metflix_remote_config.json';
+        $configPath = __DIR__ . DIRECTORY_SEPARATOR . 'movflik_remote_config.json';
         if (!is_readable($configPath)) {
             json_error('Remote config not found', 404);
         }
