@@ -1,0 +1,258 @@
+{
+  "config_version": 5,
+  "updated_at": "2026-08-06T08:45:00Z",
+  "latest_app_version": "1.0.1",
+  "min_supported_app_version": "1.0.0",
+  "force_update": false,
+  "maintenance_mode": false,
+
+  "release": {
+    "play_store_package_id": "com.growdev.metflix",
+    "play_store_url": "https://play.google.com/store/apps/details?id=com.growdev.metflix",
+    "update_title": "Update Metflix",
+    "update_message": "A new version is available on Play Store. Update now for the latest features and fixes.",
+    "force_update_message": "Please update Metflix to continue using the app.",
+    "maintenance_message": "Metflix is under maintenance. Please try again later."
+  },
+
+  "app": {
+    "api_base_url": "https://app.myappworld.in/tmdb/api",
+    "api_key": "f3a9d6c1b8e5f27a4d0c9e6b1a7f5d82",
+    "default_country": "IN",
+    "catalog": {
+      "genres": {
+        "action": 28,
+        "comedy": 35,
+        "drama": 18,
+        "thriller": 53,
+        "crime": 80,
+        "romance": 10749,
+        "horror": 27,
+        "animation": 16,
+        "scifi": 878
+      },
+      "providers": {
+        "netflix": 8,
+        "jiohotstar": 2336,
+        "prime_video": 9,
+        "zee5": 232
+      }
+    },
+    "home_feed": {
+      "secondary_rows": [
+        "hindi",
+        "tamil",
+        "telugu",
+        "malayalam",
+        "action",
+        "thriller",
+        "crime",
+        "drama",
+        "comedy",
+        "romance",
+        "horror",
+        "animation",
+        "scifi",
+        "on_netflix",
+        "jiohotstar",
+        "prime_video",
+        "zee5",
+        "top_rated"
+      ],
+      "infinite_scroll_page_size": 20
+    },
+    "profiles": {
+      "max_profiles": 5
+    },
+    "recent_viewed": {
+      "max_items": 10
+    },
+    "ui": {
+      "play_button_label": "Play Trailer",
+      "more_info_button_label": "More Info",
+      "hero_tap_to_detail": true
+    }
+  },
+
+  "features": {
+    "intro_enabled": true,
+    "deeplink_enabled": true,
+    "analytics_enabled": true,
+    "vpn_feature_enabled": false,
+    "video_play_enabled": true
+  },
+
+  "ads": {
+    "enabled": true,
+    "use_test_ids": true,
+
+    "unit_ids": {
+      "production": {
+        "app_id": "ca-app-pub-3940256099942544~3347511713",
+        "banner": "ca-app-pub-3940256099942544/6300978111",
+        "interstitial": "ca-app-pub-3940256099942544/1033173712",
+        "rewarded": "ca-app-pub-3940256099942544/5224354917",
+        "rewarded_interstitial": "ca-app-pub-3940256099942544/5354046379",
+        "app_open": "ca-app-pub-3940256099942544/9257395921",
+        "native": "ca-app-pub-3940256099942544/2247696110"
+      },
+      "test": {
+        "app_id": "ca-app-pub-3940256099942544~3347511713",
+        "banner": "ca-app-pub-3940256099942544/6300978111",
+        "interstitial": "ca-app-pub-3940256099942544/1033173712",
+        "rewarded": "ca-app-pub-3940256099942544/5224354917",
+        "rewarded_interstitial": "ca-app-pub-3940256099942544/5354046379",
+        "app_open": "ca-app-pub-3940256099942544/9257395921",
+        "native": "ca-app-pub-3940256099942544/2247696110"
+      }
+    },
+
+    "formats_enabled": {
+      "app_open": true,
+      "banner": true,
+      "interstitial": true,
+      "native": true,
+      "rewarded": false,
+      "rewarded_interstitial": false
+    },
+
+    "policy": {
+      "rule_1_startup_app_open_first": {
+        "enabled": true,
+        "show_app_open_on_cold_start": true,
+        "show_after_intro_complete": true,
+        "block_interstitial_on_cold_start": true,
+        "cold_start_grace_seconds": 60
+      },
+      "rule_2_interstitial_gap": {
+        "enabled": true,
+        "min_seconds_between_interstitials": 45,
+        "min_user_clicks_between_interstitials": 4,
+        "gap_mode": "either",
+        "max_interstitials_per_session": 5,
+        "every_nth_detail_open": 3,
+        "delay_before_show_ms": 1200,
+        "block_while_trailer_playing": true,
+        "block_while_fullscreen_busy": true
+      },
+      "rule_3_one_ad_per_page": {
+        "enabled": true,
+        "banner_and_native_mutually_exclusive": true
+      },
+      "rule_4_max_ad_screen_ratio": {
+        "enabled": true,
+        "max_ad_area_percent": 30,
+        "min_content_area_percent": 70
+      },
+      "rule_5_exit_popup_ad": {
+        "enabled": true,
+        "ad_format": "native",
+        "native_template": "medium",
+        "allow_rectangle_fallback": true,
+        "show_on_system_back_from_home": true
+      },
+      "rule_6_single_entry_exit_button": {
+        "enabled": true,
+        "exit_dialog_single_button_only": true,
+        "block_multiple_exit_ctas": true
+      },
+      "rule_7_no_vpn_with_other_features": {
+        "enabled": true,
+        "vpn_standalone_only": true
+      },
+      "app_open": {
+        "enabled": true,
+        "on_cold_start": true,
+        "on_resume_enabled": true,
+        "min_background_seconds_for_resume": 14400,
+        "min_seconds_after_any_fullscreen_ad": 45
+      }
+    },
+
+    "placements": {
+      "main_shell": {
+        "enabled": true,
+        "format": "banner",
+        "position": "above_bottom_nav",
+        "hide_when_home_native": true
+      },
+      "home_hero": {
+        "enabled": true,
+        "format": "native",
+        "ad_slide_index": 1,
+        "native_template": "medium"
+      },
+      "home": {
+        "enabled": true,
+        "format": "native",
+        "exclude_banner_on_same_page": true,
+        "native_slots": [
+          {
+            "slot_id": "home_after_recent",
+            "enabled": false,
+            "template": "small",
+            "after_row_key": "recently_viewed"
+          },
+          {
+            "slot_id": "home_mid_feed",
+            "enabled": true,
+            "template": "small",
+            "after_row_key": "trending"
+          },
+          {
+            "slot_id": "home_before_infinite",
+            "enabled": false,
+            "template": "small",
+            "after_row_key": "top_rated"
+          }
+        ]
+      },
+      "search": {
+        "enabled": false,
+        "format": "none",
+        "note": "Uses main_shell banner when tab active"
+      },
+      "categories": {
+        "enabled": false,
+        "format": "none",
+        "note": "Uses main_shell banner when tab active"
+      },
+      "my_metflix": {
+        "enabled": false,
+        "format": "none",
+        "note": "Uses main_shell banner when tab active"
+      },
+      "detail": {
+        "enabled": true,
+        "format": "none",
+        "banner_enabled": false,
+        "native_enabled": false,
+        "interstitial_on_open": true,
+        "interstitial_use_policy_rule_2": true
+      },
+      "person_detail": {
+        "enabled": true,
+        "format": "banner",
+        "position": "bottom"
+      },
+      "episode_detail": {
+        "enabled": true,
+        "format": "banner",
+        "position": "bottom"
+      },
+      "filtered_list": {
+        "enabled": true,
+        "format": "banner",
+        "position": "bottom"
+      },
+      "trailer_player": {
+        "enabled": false,
+        "block_all_ads": true
+      },
+      "image_gallery": {
+        "enabled": false,
+        "block_all_ads": true
+      }
+    }
+  }
+}
