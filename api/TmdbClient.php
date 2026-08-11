@@ -3,13 +3,19 @@
 declare(strict_types=1);
 
 /**
- * TMDB HTTP client with multi-key round-robin (from TMDB_API_KEYS).
+ * TMDB HTTP client with multi-key support (from TMDB_API_KEYS).
+ *
+ * Modes:
+ * - Round-robin (default): advance key after each request
+ * - Sticky pin: stay on one key (e.g. every 10 persons → next key)
+ * On HTTP 429 always rotates to the next key and retries.
  */
 final class TmdbClient
 {
     /** @var list<string> */
     private array $apiKeys = [];
     private int $keyIndex = 0;
+    private bool $sticky = false;
     private string $baseUrl;
     private float $sleepSeconds;
 
@@ -35,16 +41,57 @@ final class TmdbClient
         return count($this->apiKeys);
     }
 
+    /** Current 0-based key slot (for logs). */
+    public function currentKeyIndex(): int
+    {
+        return $this->keyIndex % max(1, count($this->apiKeys));
+    }
+
+    /**
+     * Pin all following requests to one key until pinToIndex() is called again.
+     * Use for "every N persons → next key" rotation.
+     */
+    public function pinToIndex(int $index): void
+    {
+        $n = count($this->apiKeys);
+        $this->keyIndex = (($index % $n) + $n) % $n;
+        $this->sticky = true;
+    }
+
+    /** Back to per-request round-robin. */
+    public function clearPin(): void
+    {
+        $this->sticky = false;
+    }
+
+    /** Masked key label for browser logs (never print full secret). */
+    public function keyLabel(?int $index = null): string
+    {
+        $i = $index ?? $this->currentKeyIndex();
+        $n = count($this->apiKeys);
+        $i = (($i % $n) + $n) % $n;
+        $key = $this->apiKeys[$i];
+        $tail = strlen($key) > 4 ? substr($key, -4) : $key;
+        return 'key#' . ($i + 1) . ' …' . $tail;
+    }
+
     /** @param array<string, scalar|null> $params */
     public function get(string $path, array $params = []): ?array
     {
         $path = ltrim($path, '/');
         $attempts = count($this->apiKeys) + 2;
         $lastError = null;
+        $startedSlot = $this->currentKeyIndex();
 
         for ($i = 0; $i < $attempts; $i++) {
-            $key = $this->apiKeys[$this->keyIndex % count($this->apiKeys)];
-            $this->keyIndex++;
+            $slot = $this->currentKeyIndex();
+            $key = $this->apiKeys[$slot];
+
+            // Round-robin advances after picking; sticky keeps the same slot
+            // unless we hit 429 (handled below).
+            if (!$this->sticky) {
+                $this->keyIndex = ($slot + 1) % count($this->apiKeys);
+            }
 
             $query = array_merge($params, ['api_key' => $key]);
             $url = $this->baseUrl . '/' . $path . '?' . http_build_query($query);
@@ -67,10 +114,17 @@ final class TmdbClient
 
             if ($errno !== 0 || $body === false) {
                 $lastError = "curl errno {$errno}";
+                $this->keyIndex = ($slot + 1) % count($this->apiKeys);
                 continue;
             }
             if ($status === 429) {
-                usleep(1_500_000);
+                $lastError = 'HTTP 429 rate limit';
+                $this->keyIndex = ($slot + 1) % count($this->apiKeys);
+                if ($this->currentKeyIndex() === $startedSlot && $i > 0) {
+                    usleep(1_500_000);
+                } else {
+                    usleep(400_000);
+                }
                 continue;
             }
             if ($status < 200 || $status >= 300) {
@@ -78,6 +132,7 @@ final class TmdbClient
                 if ($status === 404) {
                     return null;
                 }
+                $this->keyIndex = ($slot + 1) % count($this->apiKeys);
                 continue;
             }
 

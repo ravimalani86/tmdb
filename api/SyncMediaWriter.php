@@ -84,11 +84,172 @@ final class SyncMediaWriter
 
     public function syncPerson(TmdbClient $tmdb, int $tmdbId): string
     {
-        $detail = $tmdb->get("person/{$tmdbId}");
+        $detail = $tmdb->get("person/{$tmdbId}", [
+            'append_to_response' => 'images,external_ids',
+        ]);
         if ($detail === null) {
             throw new RuntimeException("Person {$tmdbId} not found on TMDB");
         }
-        return $this->upsertPersonRow($detail);
+
+        // Prefer external_ids.imdb_id when present (detail.imdb_id can be null).
+        $ext = $detail['external_ids'] ?? null;
+        if (is_array($ext) && !empty($ext['imdb_id']) && empty($detail['imdb_id'])) {
+            $detail['imdb_id'] = $ext['imdb_id'];
+        }
+
+        $action = $this->upsertPersonRow($detail);
+        $personId = $this->personLocalId($tmdbId);
+        if ($personId === null) {
+            throw new RuntimeException("Person {$tmdbId} missing after upsert");
+        }
+
+        $this->syncPersonImages($personId, $detail['images'] ?? []);
+        $this->syncPersonExternalIds($personId, is_array($ext) ? $ext : []);
+
+        return $action;
+    }
+
+    public function personLocalId(int $tmdbId): ?int
+    {
+        $stmt = $this->db->prepare('SELECT id FROM people WHERE tmdb_id = :id LIMIT 1');
+        $stmt->execute(['id' => $tmdbId]);
+        $id = $stmt->fetchColumn();
+        return $id === false ? null : (int) $id;
+    }
+
+    /** @param array<string, mixed> $images */
+    private function syncPersonImages(int $personId, array $images): void
+    {
+        try {
+            $this->db->prepare('DELETE FROM images WHERE media_type = ? AND media_id = ?')
+                ->execute(['person', $personId]);
+        } catch (Throwable $e) {
+            return;
+        }
+        $ins = $this->db->prepare(
+            'INSERT INTO images (media_type, media_id, file_path, width, height, aspect_ratio, vote_average, vote_count, image_type, iso_639_1, last_synced_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             ON DUPLICATE KEY UPDATE
+               width = VALUES(width),
+               height = VALUES(height),
+               aspect_ratio = VALUES(aspect_ratio),
+               vote_average = VALUES(vote_average),
+               vote_count = VALUES(vote_count),
+               iso_639_1 = VALUES(iso_639_1),
+               last_synced_at = VALUES(last_synced_at)'
+        );
+        $now = gmdate('Y-m-d H:i:s');
+        $n = 0;
+        $seen = [];
+        foreach ($images['profiles'] ?? [] as $img) {
+            if (!is_array($img) || empty($img['file_path']) || $n >= 20) {
+                continue;
+            }
+            $fp = (string) $img['file_path'];
+            if (isset($seen[$fp])) {
+                continue;
+            }
+            $seen[$fp] = true;
+            try {
+                $ins->execute([
+                    'person',
+                    $personId,
+                    $fp,
+                    $img['width'] ?? null,
+                    $img['height'] ?? null,
+                    $img['aspect_ratio'] ?? null,
+                    $img['vote_average'] ?? null,
+                    $img['vote_count'] ?? null,
+                    'profile',
+                    $img['iso_639_1'] ?? null,
+                    $now,
+                ]);
+            } catch (Throwable $e) {
+                return;
+            }
+            $n++;
+        }
+    }
+
+    private ?bool $hasExternalIdsTable = null;
+
+    private function hasExternalIdsTable(): bool
+    {
+        if ($this->hasExternalIdsTable !== null) {
+            return $this->hasExternalIdsTable;
+        }
+        try {
+            $this->db->query('SELECT 1 FROM external_ids LIMIT 1');
+            $this->hasExternalIdsTable = true;
+        } catch (Throwable $e) {
+            $this->hasExternalIdsTable = false;
+        }
+        return $this->hasExternalIdsTable;
+    }
+
+    /** @param array<string, mixed> $ext */
+    private function syncPersonExternalIds(int $personId, array $ext): void
+    {
+        if ($ext === [] || !$this->hasExternalIdsTable()) {
+            return;
+        }
+        $now = gmdate('Y-m-d H:i:s');
+        $fields = [
+            'imdb_id' => $ext['imdb_id'] ?? null,
+            'facebook_id' => isset($ext['facebook_id']) && $ext['facebook_id'] !== '' && $ext['facebook_id'] !== null
+                ? (string) $ext['facebook_id'] : null,
+            'instagram_id' => isset($ext['instagram_id']) && $ext['instagram_id'] !== '' && $ext['instagram_id'] !== null
+                ? (string) $ext['instagram_id'] : null,
+            'twitter_id' => isset($ext['twitter_id']) && $ext['twitter_id'] !== '' && $ext['twitter_id'] !== null
+                ? (string) $ext['twitter_id'] : null,
+            'wikidata_id' => $ext['wikidata_id'] ?? null,
+            'youtube_id' => null,
+            'last_synced_at' => $now,
+        ];
+
+        try {
+            $stmt = $this->db->prepare(
+                'SELECT id FROM external_ids WHERE media_type = ? AND media_id = ? LIMIT 1'
+            );
+            $stmt->execute(['person', $personId]);
+            $existingId = $stmt->fetchColumn();
+
+            if ($existingId === false) {
+                $this->db->prepare(
+                    'INSERT INTO external_ids (media_type, media_id, imdb_id, facebook_id, instagram_id, twitter_id, wikidata_id, youtube_id, last_synced_at)
+                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
+                )->execute([
+                    'person',
+                    $personId,
+                    $fields['imdb_id'],
+                    $fields['facebook_id'],
+                    $fields['instagram_id'],
+                    $fields['twitter_id'],
+                    $fields['wikidata_id'],
+                    $fields['youtube_id'],
+                    $fields['last_synced_at'],
+                ]);
+                return;
+            }
+
+            $this->db->prepare(
+                'UPDATE external_ids
+                 SET imdb_id = ?, facebook_id = ?, instagram_id = ?, twitter_id = ?,
+                     wikidata_id = ?, youtube_id = ?, last_synced_at = ?
+                 WHERE id = ?'
+            )->execute([
+                $fields['imdb_id'],
+                $fields['facebook_id'],
+                $fields['instagram_id'],
+                $fields['twitter_id'],
+                $fields['wikidata_id'],
+                $fields['youtube_id'],
+                $fields['last_synced_at'],
+                (int) $existingId,
+            ]);
+        } catch (Throwable $e) {
+            $this->hasExternalIdsTable = false;
+        }
     }
 
     /** @return list<int> person tmdb ids to enqueue (top cast + directors) */
