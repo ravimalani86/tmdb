@@ -86,13 +86,13 @@ final class SyncAdminRepository
         ];
     }
 
-    public function process(?int $payloadLimit = null, ?string $payloadMediaType = null): array
+    public function process(?int $payloadLimit = null, ?string $payloadMediaType = null, ?string $payloadSource = null): array
     {
-        $opts = $this->resolveProcessOptions($payloadLimit, $payloadMediaType);
+        $opts = $this->resolveProcessOptions($payloadLimit, $payloadMediaType, $payloadSource);
         $batchHolds = intdiv(max(0, $opts['limit'] - 1), 50);
         @set_time_limit(300 + ($batchHolds * 30));
         ignore_user_abort(true);
-        $stats = $this->process->process($opts['limit'], $opts['media_type']);
+        $stats = $this->process->process($opts['limit'], $opts['media_type'], $opts['source']);
         $stats['resolved_from'] = $opts['resolved_from'];
         return [
             'action' => 'process',
@@ -101,14 +101,14 @@ final class SyncAdminRepository
         ];
     }
 
-    public function run(?string $syncDay = null, ?int $payloadLimit = null, ?string $payloadMediaType = null): array
+    public function run(?string $syncDay = null, ?int $payloadLimit = null, ?string $payloadMediaType = null, ?string $payloadSource = null): array
     {
-        $opts = $this->resolveProcessOptions($payloadLimit, $payloadMediaType);
+        $opts = $this->resolveProcessOptions($payloadLimit, $payloadMediaType, $payloadSource);
         $batchHolds = intdiv(max(0, $opts['limit'] - 1), 50);
         @set_time_limit(900 + ($batchHolds * 30));
         ignore_user_abort(true);
         $enq = $this->enqueue->enqueue($syncDay);
-        $proc = $this->process->process($opts['limit'], $opts['media_type']);
+        $proc = $this->process->process($opts['limit'], $opts['media_type'], $opts['source']);
         $proc['resolved_from'] = $opts['resolved_from'];
         return [
             'action' => 'run',
@@ -122,7 +122,13 @@ final class SyncAdminRepository
     /**
      * Global queue counts (not filtered by sync_day).
      *
-     * @return array{pending_by_type: array<string,int>, by_status: array<string,int>}
+     * @return array{
+     *   pending_by_type: array<string,int>,
+     *   pending_by_source: array<string,int>,
+     *   by_status: array<string,int>,
+     *   pending_total: int,
+     *   total: int
+     * }
      */
     public function queueOverview(): array
     {
@@ -136,6 +142,16 @@ final class SyncAdminRepository
             $pendingByType[(string) $row['media_type']] = (int) $row['cnt'];
         }
 
+        $pendingBySource = [];
+        foreach ($this->db->query(
+            "SELECT COALESCE(NULLIF(TRIM(source), ''), '(empty)') AS source, COUNT(*) AS cnt
+             FROM media_sync_queue
+             WHERE status = 'pending'
+             GROUP BY COALESCE(NULLIF(TRIM(source), ''), '(empty)')"
+        )->fetchAll() as $row) {
+            $pendingBySource[(string) $row['source']] = (int) $row['cnt'];
+        }
+
         $byStatus = [];
         foreach ($this->db->query(
             'SELECT status, COUNT(*) AS cnt
@@ -147,6 +163,7 @@ final class SyncAdminRepository
 
         return [
             'pending_by_type' => $pendingByType,
+            'pending_by_source' => $pendingBySource,
             'by_status' => $byStatus,
             'pending_total' => array_sum($pendingByType),
             'total' => array_sum($byStatus),
@@ -154,43 +171,52 @@ final class SyncAdminRepository
     }
 
     /**
-     * @return array{process_limit: int|null, media_type: string|null, updated_at: string|null}
+     * @return array{
+     *   process_limit: int|null,
+     *   media_type: string|null,
+     *   source: string|null,
+     *   updated_at: string|null
+     * }
      */
     public function getCronConfig(): array
     {
+        $empty = [
+            'process_limit' => null,
+            'media_type' => null,
+            'source' => null,
+            'updated_at' => null,
+        ];
         try {
             $this->ensureCronConfigRow();
             $row = $this->db->query(
-                'SELECT process_limit, media_type, updated_at FROM sync_cron_config WHERE id = 1 LIMIT 1'
+                'SELECT process_limit, media_type, source, updated_at FROM sync_cron_config WHERE id = 1 LIMIT 1'
             )->fetch();
         } catch (Throwable $e) {
-            return [
-                'process_limit' => null,
-                'media_type' => null,
-                'updated_at' => null,
-            ];
+            return $empty;
         }
         if ($row === false) {
-            return [
-                'process_limit' => null,
-                'media_type' => null,
-                'updated_at' => null,
-            ];
+            return $empty;
         }
         $mt = $row['media_type'] ?? null;
         if ($mt !== null) {
             $mt = trim((string) $mt);
             $mt = $mt === '' ? null : strtolower($mt);
         }
+        $src = $row['source'] ?? null;
+        if ($src !== null) {
+            $src = trim((string) $src);
+            $src = $src === '' ? null : strtolower($src);
+        }
         $limit = (int) ($row['process_limit'] ?? 0);
         return [
             'process_limit' => $limit > 0 ? max(1, min(450, $limit)) : null,
             'media_type' => $mt,
+            'source' => $src,
             'updated_at' => $row['updated_at'] ?? null,
         ];
     }
 
-    public function saveCronConfig(int $processLimit, ?string $mediaType): array
+    public function saveCronConfig(int $processLimit, ?string $mediaType, ?string $source = null): array
     {
         $processLimit = max(1, min(450, $processLimit));
         if ($mediaType !== null) {
@@ -202,13 +228,22 @@ final class SyncAdminRepository
                 throw new InvalidArgumentException('media_type must be movie, tv, person, or empty');
             }
         }
+        if ($source !== null) {
+            $source = strtolower(trim($source));
+            if ($source === '' || $source === 'all') {
+                $source = null;
+            }
+            if ($source !== null && !in_array($source, ['changes', 'discover', 'credits'], true)) {
+                throw new InvalidArgumentException('source must be changes, discover, credits, or empty');
+            }
+        }
 
         $this->ensureCronConfigRow();
         $this->db->prepare(
             'UPDATE sync_cron_config
-             SET process_limit = ?, media_type = ?, updated_at = UTC_TIMESTAMP()
+             SET process_limit = ?, media_type = ?, source = ?, updated_at = UTC_TIMESTAMP()
              WHERE id = 1'
-        )->execute([$processLimit, $mediaType]);
+        )->execute([$processLimit, $mediaType, $source]);
 
         return $this->getCronConfig();
     }
@@ -216,12 +251,20 @@ final class SyncAdminRepository
     /**
      * Priority: admin DB config → payload → default.
      *
-     * @return array{limit: int, media_type: string|null, resolved_from: array{limit: string, media_type: string}}
+     * @return array{
+     *   limit: int,
+     *   media_type: string|null,
+     *   source: string|null,
+     *   resolved_from: array{limit: string, media_type: string, source: string}
+     * }
      */
-    public function resolveProcessOptions(?int $payloadLimit, ?string $payloadMediaType): array
-    {
+    public function resolveProcessOptions(
+        ?int $payloadLimit,
+        ?string $payloadMediaType,
+        ?string $payloadSource = null
+    ): array {
         $cfg = $this->getCronConfig();
-        $from = ['limit' => 'default', 'media_type' => 'default'];
+        $from = ['limit' => 'default', 'media_type' => 'default', 'source' => 'default'];
 
         $limit = 3;
         if ($cfg['process_limit'] !== null && (int) $cfg['process_limit'] > 0) {
@@ -248,23 +291,55 @@ final class SyncAdminRepository
             $from['media_type'] = 'default';
         }
 
+        $source = null;
+        $dbSrc = $cfg['source'] ?? null;
+        if (is_string($dbSrc) && $dbSrc !== '') {
+            $source = strtolower($dbSrc);
+            $from['source'] = 'admin';
+        } elseif ($payloadSource !== null && $payloadSource !== '') {
+            $source = strtolower($payloadSource);
+            $from['source'] = 'payload';
+        }
+
+        if ($source !== null && !in_array($source, ['changes', 'discover', 'credits'], true)) {
+            $source = null;
+            $from['source'] = 'default';
+        }
+
         return [
             'limit' => $limit,
             'media_type' => $mediaType,
+            'source' => $source,
             'resolved_from' => $from,
         ];
     }
 
     private function ensureCronConfigRow(): void
     {
+        $this->db->exec(
+            'CREATE TABLE IF NOT EXISTS sync_cron_config (
+                id TINYINT UNSIGNED NOT NULL PRIMARY KEY,
+                process_limit INT NOT NULL DEFAULT 50,
+                media_type VARCHAR(16) NULL,
+                source VARCHAR(32) NULL,
+                updated_at DATETIME NULL
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4'
+        );
+
+        // Older installs may lack source column.
         try {
-            $this->db->exec(
-                'INSERT IGNORE INTO sync_cron_config (id, process_limit, media_type)
-                 VALUES (1, 50, NULL)'
-            );
+            $cols = $this->db->query('SHOW COLUMNS FROM sync_cron_config LIKE \'source\'')->fetchAll();
+            if ($cols === []) {
+                $this->db->exec('ALTER TABLE sync_cron_config ADD COLUMN source VARCHAR(32) NULL AFTER media_type');
+            }
         } catch (Throwable $e) {
-            // Table may not exist yet — caller will see the real error on SELECT/UPDATE.
+            // Ignore if no permission / already exists race.
         }
+
+        $this->db->exec(
+            'INSERT IGNORE INTO sync_cron_config (id, process_limit, media_type, source)
+             VALUES (1, 50, NULL, NULL)'
+        );
     }
 
     public function todayIst(): string

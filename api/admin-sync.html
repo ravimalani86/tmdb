@@ -24,7 +24,7 @@
       color: var(--text);
       line-height: 1.45;
     }
-    .wrap { max-width: 920px; margin: 0 auto; padding: 24px 16px 48px; }
+    .wrap { max-width: 1100px; margin: 0 auto; padding: 24px 16px 48px; }
     h1 { font-size: 1.35rem; margin: 0 0 4px; font-weight: 650; }
     .sub { color: var(--muted); font-size: 0.9rem; margin-bottom: 20px; }
     .panel {
@@ -67,7 +67,8 @@
     }
     button:disabled { opacity: 0.5; cursor: not-allowed; }
     button.secondary { background: #2c3845; }
-    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    .grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; }
+    @media (max-width: 900px) { .grid { grid-template-columns: 1fr 1fr; } }
     @media (max-width: 700px) { .grid { grid-template-columns: 1fr; } }
     table { width: 100%; border-collapse: collapse; font-size: 0.95rem; }
     th, td { text-align: left; padding: 8px 6px; border-bottom: 1px solid var(--border); }
@@ -124,6 +125,16 @@
         <div class="meta" id="pendingMeta"></div>
       </div>
       <div class="panel">
+        <h2>Pending by source</h2>
+        <table>
+          <thead><tr><th>source</th><th style="text-align:right">cnt</th></tr></thead>
+          <tbody id="sourceBody">
+            <tr><td colspan="2" style="color:var(--muted)">Waiting…</td></tr>
+          </tbody>
+        </table>
+        <div class="meta" id="sourceMeta"></div>
+      </div>
+      <div class="panel">
         <h2>By status</h2>
         <table>
           <thead><tr><th>status</th><th style="text-align:right">cnt</th></tr></thead>
@@ -137,7 +148,7 @@
 
     <div class="panel">
       <h2>Process cron config</h2>
-      <p class="hint">Priority: <strong>admin config</strong> → payload → default. Media type <strong>All</strong> = empty (all types).</p>
+      <p class="hint">Priority: <strong>admin config</strong> → payload → default. <strong>All</strong> = empty (no filter).</p>
       <div class="row">
         <label for="processLimit">limit (required, 1–450)</label>
         <input id="processLimit" type="number" min="1" max="450" value="50" required />
@@ -149,6 +160,15 @@
           <label><input type="radio" name="mediaType" value="movie" /> movie</label>
           <label><input type="radio" name="mediaType" value="tv" /> tv</label>
           <label><input type="radio" name="mediaType" value="person" /> person</label>
+        </div>
+      </div>
+      <div style="margin-top:12px">
+        <label>source (optional)</label>
+        <div class="radios">
+          <label><input type="radio" name="source" value="" checked /> All</label>
+          <label><input type="radio" name="source" value="changes" /> changes</label>
+          <label><input type="radio" name="source" value="discover" /> discover</label>
+          <label><input type="radio" name="source" value="credits" /> credits</label>
         </div>
       </div>
       <div class="row">
@@ -222,12 +242,16 @@
       try {
         const data = await api('/admin/sync/queue-overview', {});
         fillTable('pendingBody', data.pending_by_type, 'No pending rows');
+        fillTable('sourceBody', data.pending_by_source, 'No pending rows');
         fillTable('statusBody', data.by_status, 'No rows');
         const now = new Date().toLocaleTimeString();
+        const sourceTotal = Object.values(data.pending_by_source || {}).reduce((a, b) => a + b, 0);
         $('pendingMeta').textContent = 'pending total: ' + (data.pending_total || 0) + ' · updated ' + now;
+        $('sourceMeta').textContent = 'pending total: ' + sourceTotal + ' · updated ' + now;
         $('statusMeta').textContent = 'queue total: ' + (data.total || 0) + ' · updated ' + now;
       } catch (e) {
         $('pendingBody').innerHTML = '<tr><td colspan="2" style="color:var(--bad)">' + e.message + '</td></tr>';
+        $('sourceBody').innerHTML = '<tr><td colspan="2" style="color:var(--bad)">' + e.message + '</td></tr>';
         $('statusBody').innerHTML = '<tr><td colspan="2" style="color:var(--bad)">' + e.message + '</td></tr>';
       }
     }
@@ -237,13 +261,22 @@
       return el ? el.value : '';
     }
 
+    function selectedSource() {
+      const el = document.querySelector('input[name="source"]:checked');
+      return el ? el.value : '';
+    }
+
     function applyConfigForm(cfg) {
       const limit = cfg && cfg.process_limit != null ? cfg.process_limit : 50;
       $('processLimit').value = limit;
       const mt = (cfg && cfg.media_type) ? cfg.media_type : '';
-      const radio = document.querySelector('input[name="mediaType"][value="' + mt + '"]')
+      const mtRadio = document.querySelector('input[name="mediaType"][value="' + mt + '"]')
         || document.querySelector('input[name="mediaType"][value=""]');
-      if (radio) radio.checked = true;
+      if (mtRadio) mtRadio.checked = true;
+      const src = (cfg && cfg.source) ? cfg.source : '';
+      const srcRadio = document.querySelector('input[name="source"][value="' + src + '"]')
+        || document.querySelector('input[name="source"][value=""]');
+      if (srcRadio) srcRadio.checked = true;
       $('configMeta').textContent = cfg && cfg.updated_at
         ? 'Last saved: ' + cfg.updated_at + ' (UTC)'
         : 'No saved config yet (defaults apply until save).';
@@ -268,10 +301,15 @@
         $('configMsg').textContent = 'limit must be 1–450';
         return;
       }
-      const body = { limit };
-      const mt = selectedMediaType();
-      if (mt) body.media_type = mt;
+      // Always send filters so "All" clears previously saved values.
+      const body = {
+        limit: limit,
+        media_type: selectedMediaType() || '',
+        source: selectedSource() || '',
+      };
       try {
+        $('configMsg').className = 'msg';
+        $('configMsg').textContent = 'Saving…';
         const data = await api('/admin/sync/config/save', body);
         applyConfigForm(data.config || {});
         $('configMsg').className = 'msg ok';
@@ -295,6 +333,7 @@
           ' failed=' + (p.failed || 0) +
           ' limit=' + (p.limit ?? '?') +
           ' media_type=' + (p.media_type || 'all') +
+          ' source=' + (p.source || 'all') +
           ' from=' + JSON.stringify(p.resolved_from || {});
         refreshOverview();
       } catch (e) {

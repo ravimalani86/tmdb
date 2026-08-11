@@ -20,10 +20,11 @@ final class SyncProcessService
     ) {
     }
 
-    public function process(int $limit = 3, ?string $mediaType = null): array
+    public function process(int $limit = 3, ?string $mediaType = null, ?string $source = null): array
     {
         $limit = max(1, min(450, $limit));
         $mediaType = $this->normalizeMediaType($mediaType);
+        $source = $this->normalizeSource($source);
         $stats = [
             'done' => 0,
             'failed' => 0,
@@ -31,10 +32,11 @@ final class SyncProcessService
             'processed' => 0,
             'limit' => $limit,
             'media_type' => $mediaType,
+            'source' => $source,
             'tmdb_keys' => $this->tmdb->keyCount(),
         ];
 
-        $rows = $this->claim($limit, $mediaType);
+        $rows = $this->claim($limit, $mediaType, $source);
         $rowCount = count($rows);
         foreach ($rows as $index => $row) {
             $stats['processed']++;
@@ -93,14 +95,32 @@ final class SyncProcessService
         return in_array($mediaType, ['movie', 'tv', 'person'], true) ? $mediaType : null;
     }
 
-    /** @return list<array<string, mixed>> */
-    private function claim(int $limit, ?string $mediaType = null): array
+    /** @return 'changes'|'discover'|'credits'|null */
+    private function normalizeSource(?string $source): ?string
     {
-        $typeSql = $mediaType !== null ? ' AND media_type = :mt' : '';
+        if ($source === null || $source === '') {
+            return null;
+        }
+        $source = strtolower(trim($source));
+        return in_array($source, ['changes', 'discover', 'credits'], true) ? $source : null;
+    }
+
+    /** @return list<array<string, mixed>> */
+    private function claim(int $limit, ?string $mediaType = null, ?string $source = null): array
+    {
+        $filters = '';
+        if ($mediaType !== null) {
+            $filters .= ' AND media_type = :mt';
+        }
+        if ($source !== null) {
+            $filters .= ' AND source = :src';
+        }
+
+        $ids = [];
         try {
             $stmt = $this->db->prepare(
                 'SELECT id FROM media_sync_queue
-                 WHERE status = \'pending\' AND attempts < :maxa' . $typeSql . '
+                 WHERE status = \'pending\' AND attempts < :maxa' . $filters . '
                  ORDER BY id ASC
                  LIMIT :lim
                  FOR UPDATE SKIP LOCKED'
@@ -109,6 +129,9 @@ final class SyncProcessService
             $stmt->bindValue('lim', $limit, PDO::PARAM_INT);
             if ($mediaType !== null) {
                 $stmt->bindValue('mt', $mediaType);
+            }
+            if ($source !== null) {
+                $stmt->bindValue('src', $source);
             }
             $this->db->beginTransaction();
             $stmt->execute();
@@ -129,25 +152,21 @@ final class SyncProcessService
                 $this->db->rollBack();
             }
             // Fallback without SKIP LOCKED
+            $stmt = $this->db->prepare(
+                'SELECT id FROM media_sync_queue
+                 WHERE status = \'pending\' AND attempts < :maxa' . $filters . '
+                 ORDER BY id ASC
+                 LIMIT :lim'
+            );
+            $stmt->bindValue('maxa', self::MAX_ATTEMPTS, PDO::PARAM_INT);
+            $stmt->bindValue('lim', $limit, PDO::PARAM_INT);
             if ($mediaType !== null) {
-                $stmt = $this->db->prepare(
-                    'SELECT id FROM media_sync_queue
-                     WHERE status = \'pending\' AND attempts < :maxa AND media_type = :mt
-                     ORDER BY id ASC
-                     LIMIT :lim'
-                );
-                $stmt->bindValue('maxa', self::MAX_ATTEMPTS, PDO::PARAM_INT);
                 $stmt->bindValue('mt', $mediaType);
-                $stmt->bindValue('lim', $limit, PDO::PARAM_INT);
-                $stmt->execute();
-            } else {
-                $stmt = $this->db->query(
-                    'SELECT id FROM media_sync_queue
-                     WHERE status = \'pending\' AND attempts < ' . self::MAX_ATTEMPTS . '
-                     ORDER BY id ASC
-                     LIMIT ' . (int) $limit
-                );
             }
+            if ($source !== null) {
+                $stmt->bindValue('src', $source);
+            }
+            $stmt->execute();
             $ids = array_map('intval', $stmt->fetchAll(PDO::FETCH_COLUMN));
             if ($ids === []) {
                 return [];

@@ -212,6 +212,13 @@ try {
         if ($mediaType !== null) {
             $mediaType = strtolower($mediaType);
         }
+        $source = query_string($input, 'source');
+        if ($source !== null && !in_array(strtolower($source), ['changes', 'discover', 'credits'], true)) {
+            json_error('source must be changes, discover, or credits', 400);
+        }
+        if ($source !== null) {
+            $source = strtolower($source);
+        }
 
         if ($path === '/admin/sync/status') {
             json_response($syncAdmin->status($day));
@@ -229,8 +236,31 @@ try {
             if (!$payloadHasLimit) {
                 json_error('limit is required', 400);
             }
+            // Empty string / "all" / omitted → null (no filter).
+            $saveMediaType = array_key_exists('media_type', $input)
+                ? trim((string) $input['media_type'])
+                : '';
+            if ($saveMediaType === '' || strtolower($saveMediaType) === 'all') {
+                $saveMediaType = null;
+            } elseif (!in_array(strtolower($saveMediaType), ['movie', 'tv', 'person'], true)) {
+                json_error('media_type must be movie, tv, person, or empty', 400);
+            } else {
+                $saveMediaType = strtolower($saveMediaType);
+            }
+
+            $saveSource = array_key_exists('source', $input)
+                ? trim((string) $input['source'])
+                : '';
+            if ($saveSource === '' || strtolower($saveSource) === 'all') {
+                $saveSource = null;
+            } elseif (!in_array(strtolower($saveSource), ['changes', 'discover', 'credits'], true)) {
+                json_error('source must be changes, discover, credits, or empty', 400);
+            } else {
+                $saveSource = strtolower($saveSource);
+            }
+
             try {
-                $saved = $syncAdmin->saveCronConfig((int) $payloadLimit, $mediaType);
+                $saved = $syncAdmin->saveCronConfig((int) $payloadLimit, $saveMediaType, $saveSource);
                 json_response(['action' => 'config_saved', 'config' => $saved]);
             } catch (Throwable $e) {
                 error_log('admin sync config save: ' . $e->getMessage());
@@ -249,7 +279,7 @@ try {
 
         if ($path === '/admin/sync/process') {
             try {
-                json_response($syncAdmin->process($payloadLimit, $mediaType));
+                json_response($syncAdmin->process($payloadLimit, $mediaType, $source));
             } catch (Throwable $e) {
                 error_log('admin sync process: ' . $e->getMessage());
                 json_error('Process failed: ' . $e->getMessage(), 500);
@@ -258,7 +288,7 @@ try {
 
         if ($path === '/admin/sync/run') {
             try {
-                json_response($syncAdmin->run($day, $payloadLimit, $mediaType));
+                json_response($syncAdmin->run($day, $payloadLimit, $mediaType, $source));
             } catch (Throwable $e) {
                 error_log('admin sync run: ' . $e->getMessage());
                 json_error('Run failed: ' . $e->getMessage(), 500);
