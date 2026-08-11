@@ -2,6 +2,20 @@
 
 declare(strict_types=1);
 
+// PHP 7.4 compatibility (some hosts still lack PHP 8 string helpers).
+if (!function_exists('str_starts_with')) {
+    function str_starts_with(string $haystack, string $needle): bool
+    {
+        return $needle === '' || strncmp($haystack, $needle, strlen($needle)) === 0;
+    }
+}
+if (!function_exists('str_contains')) {
+    function str_contains(string $haystack, string $needle): bool
+    {
+        return $needle === '' || strpos($haystack, $needle) !== false;
+    }
+}
+
 function api_load_env(string $path): array
 {
     $vars = [];
@@ -22,6 +36,18 @@ function api_load_env(string $path): array
     return $vars;
 }
 
+function api_resolve_path(string $raw, string $defaultRelativeToProject): string
+{
+    $raw = trim($raw);
+    if ($raw === '') {
+        $raw = $defaultRelativeToProject;
+    }
+    if ($raw !== '' && (str_starts_with($raw, '/') || preg_match('#^[A-Za-z]:[\\\\/]#', $raw))) {
+        return $raw;
+    }
+    return dirname(__DIR__) . DIRECTORY_SEPARATOR . str_replace(['/', '\\'], DIRECTORY_SEPARATOR, $raw);
+}
+
 $envPaths = [
     dirname(__DIR__) . DIRECTORY_SEPARATOR . '.env',  // project root (local)
     __DIR__ . DIRECTORY_SEPARATOR . '.env',           // api/.env (server)
@@ -32,6 +58,15 @@ foreach ($envPaths as $envPath) {
     if ($loaded !== []) {
         $env = array_merge($env, $loaded);
     }
+}
+
+$firebaseSa = trim((string) ($env['FIREBASE_SERVICE_ACCOUNT_PATH'] ?? ''));
+if ($firebaseSa === '') {
+    $firebaseSaPath = __DIR__ . DIRECTORY_SEPARATOR . 'firebase-service-account.json';
+} elseif (str_starts_with($firebaseSa, '/') || preg_match('#^[A-Za-z]:[\\\\/]#', $firebaseSa)) {
+    $firebaseSaPath = $firebaseSa;
+} else {
+    $firebaseSaPath = dirname(__DIR__) . DIRECTORY_SEPARATOR . str_replace(['/', '\\'], DIRECTORY_SEPARATOR, $firebaseSa);
 }
 
 return [
@@ -55,15 +90,17 @@ return [
     ))),
     'tmdb_rate_sleep' => (float) ($env['RATE_LIMIT_SLEEP'] ?? 0.2),
     'tmdb_monetization' => $env['WITH_WATCH_MONETIZATION_TYPES'] ?? 'flatrate',
-    'providers_config_path' => (static function () use ($env): string {
-        $raw = (string) ($env['SYNC_PROVIDERS_FILE'] ?? 'providers_config.json');
-        if ($raw !== '' && (str_starts_with($raw, '/') || preg_match('#^[A-Za-z]:[\\\\/]#', $raw))) {
-            return $raw;
-        }
-        return dirname(__DIR__) . DIRECTORY_SEPARATOR . ($raw !== '' ? $raw : 'providers_config.json');
-    })(),
+    'providers_config_path' => api_resolve_path(
+        (string) ($env['SYNC_PROVIDERS_FILE'] ?? 'providers_config.json'),
+        'providers_config.json'
+    ),
     'tmdb_image_base' => 'https://image.tmdb.org/t/p/',
     // Optional absolute site root for local logos, e.g. https://tmdb.growdevinfotech.in
     'public_base_url' => $env['PUBLIC_BASE_URL'] ?? '',
     'cors_origin' => $env['API_CORS_ORIGIN'] ?? '*',
+    'firebase' => [
+        'project_id' => $env['FIREBASE_PROJECT_ID'] ?? 'movflik',
+        'remote_config_key' => $env['FIREBASE_REMOTE_CONFIG_KEY'] ?? 'movflik_config',
+        'service_account_path' => $firebaseSaPath,
+    ],
 ];

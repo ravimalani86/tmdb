@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="description" content="Privacy Policy for Movflik — Android movie and TV discovery app." />
+  <title>Privacy Policy — Movflik</title>
+  <style>
+    :root {
+      --bg: #f7f7f5;
+      --card: #ffffff;
+      --text: #1a1a1a;
+      --muted: #5c5c5c;
+      --border: #e4e4e0;
+      --accent: #b20710;
+      --link: #0b57d0;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: Georgia, "Times New Roman", Times, serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.65;
+      font-size: 1.05rem;
+    }
+    .wrap {
+      max-width: 720px;
+      margin: 0 auto;
+      padding: 32px 20px 64px;
+    }
+    header {
+      border-bottom: 2px solid var(--text);
+      padding-bottom: 20px;
+      margin-bottom: 28px;
+    }
+    .brand {
+      font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+      font-size: 0.8rem;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--accent);
+      font-weight: 700;
+      margin: 0 0 8px;
+    }
+    h1 {
+      font-size: clamp(1.75rem, 4vw, 2.25rem);
+      line-height: 1.2;
+      margin: 0 0 10px;
+      font-weight: 700;
+    }
+    .meta {
+      font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+      font-size: 0.9rem;
+      color: var(--muted);
+      margin: 0;
+    }
+    h2 {
+      font-size: 1.25rem;
+      margin: 2rem 0 0.75rem;
+      padding-top: 0.5rem;
+      border-top: 1px solid var(--border);
+    }
+    h2:first-of-type { border-top: none; padding-top: 0; }
+    p, li { color: var(--text); }
+    ul { padding-left: 1.25rem; }
+    li { margin: 0.35rem 0; }
+    a { color: var(--link); }
+    .note {
+      font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-left: 4px solid var(--accent);
+      padding: 14px 16px;
+      margin: 1.25rem 0;
+      font-size: 0.95rem;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+      font-size: 0.9rem;
+      margin: 1rem 0;
+      background: var(--card);
+    }
+    th, td {
+      border: 1px solid var(--border);
+      padding: 10px 12px;
+      text-align: left;
+      vertical-align: top;
+    }
+    th { background: #efefec; font-weight: 600; }
+    footer {
+      margin-top: 3rem;
+      padding-top: 1.25rem;
+      border-top: 2px solid var(--text);
+      font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+      font-size: 0.85rem;
+      color: var(--muted);
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <p class="brand">Movflik</p>
+      <h1>Privacy Policy</h1>
+      <p class="meta">
+        Effective / Last updated: 11 August 2026<br />
+        App: Movflik (Android) · Package: <code>com.growdev.movflik</code><br />
+        Developer: GrowDev
+      </p>
+    </header>
+
+    <div class="note">
+      <strong>Important:</strong> Movflik is a <em>discovery</em> app for movie and TV information and trailers.
+      It does <strong>not</strong> stream full-length movies or TV shows. Movflik is not affiliated with Netflix, Inc.
+      or any other streaming service whose name or logo may appear as catalog metadata.
+    </div>
+
+    <h2>1. Introduction</h2>
+    <p>
+      This Privacy Policy explains what information Movflik (“we”, “our”, or “the app”) collects, how it is used,
+      and the choices you have. By installing or using Movflik, you agree to this policy. If you do not agree,
+      please uninstall and stop using the app.
+    </p>
+
+    <h2>2. What the app does</h2>
+    <p>Movflik lets you:</p>
+    <ul>
+      <li>Browse movie and TV catalog information (titles, posters, overviews, genres, providers)</li>
+      <li>Search and filter titles</li>
+      <li>Watch trailers (via YouTube player)</li>
+      <li>Manage personal lists such as My List and Watched</li>
+      <li>Create local profiles on your device (display name / color)</li>
+    </ul>
+
+    <h2>3. Information we collect</h2>
+
+    <h3>3.1 Information stored on your device</h3>
+    <p>Using Android app storage (for example SharedPreferences / local cache), Movflik may store:</p>
+    <ul>
+      <li><strong>Profile data</strong> — profile display name and color (up to several local profiles)</li>
+      <li><strong>Device / profile identifier</strong> — a random UUID generated on your device (not your Google account)</li>
+      <li><strong>Recently viewed titles</strong> — a short on-device history</li>
+      <li><strong>Local analytics counters</strong> — simple event counts (for example app opens, poster taps, trailer opens). These stay on your device and are not uploaded to an analytics server</li>
+      <li><strong>App cache / settings</strong> — cached catalog responses and a copy of remote configuration so the app can load faster and work when offline when possible</li>
+      <li><strong>Ad-related local state</strong> — for example temporary “pause ads” reward state when that feature is enabled</li>
+    </ul>
+
+    <h3>3.2 Information sent to our servers</h3>
+    <p>
+      Catalog and list features contact our API (for example hosted at
+      <code>app.myappworld.in</code>). Requests may include:
+    </p>
+    <ul>
+      <li>An API key used by the app to access our backend</li>
+      <li>Your random <strong>device / profile ID</strong></li>
+      <li><strong>List actions</strong> — titles you save or mark as watched, linked to that ID</li>
+      <li>Filter parameters you choose (search text, genre, language, provider, country) needed to return results</li>
+    </ul>
+    <p>
+      We do <strong>not</strong> require your real name, email address, phone number, or password to use Movflik.
+      There is no traditional account login.
+    </p>
+
+    <h3>3.3 Information handled by third-party services</h3>
+    <table>
+      <thead>
+        <tr>
+          <th>Service</th>
+          <th>What may be processed</th>
+          <th>Purpose</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Google AdMob</td>
+          <td>Advertising ID, device / ad interaction data (as provided by Google’s ads SDK), IP and diagnostic data per Google’s policies</td>
+          <td>Show, measure, and improve ads when ads are enabled</td>
+        </tr>
+        <tr>
+          <td>Firebase Remote Config (Google)</td>
+          <td>App instance identifiers and configuration fetch metadata as described by Google Firebase</td>
+          <td>Deliver feature flags, ad settings, update / maintenance messages without an app store update</td>
+        </tr>
+        <tr>
+          <td>YouTube (Google)</td>
+          <td>Data collected by YouTube / Google when a trailer plays</td>
+          <td>Play trailer videos</td>
+        </tr>
+        <tr>
+          <td>The Movie Database (TMDB)</td>
+          <td>Movie / TV metadata and images are sourced via TMDB; our backend uses the TMDB API</td>
+          <td>Catalog content</td>
+        </tr>
+        <tr>
+          <td>Device share sheet</td>
+          <td>We do not receive your message recipients</td>
+          <td>Optional sharing of a title link</td>
+        </tr>
+      </tbody>
+    </table>
+    <p>
+      Third parties process data under their own policies. Please review:
+    </p>
+    <ul>
+      <li><a href="https://policies.google.com/privacy" rel="noopener noreferrer" target="_blank">Google Privacy Policy</a></li>
+      <li><a href="https://policies.google.com/technologies/ads" rel="noopener noreferrer" target="_blank">Google Advertising</a></li>
+      <li><a href="https://firebase.google.com/support/privacy" rel="noopener noreferrer" target="_blank">Firebase Privacy</a></li>
+      <li><a href="https://www.themoviedb.org/privacy-policy" rel="noopener noreferrer" target="_blank">TMDB Privacy Policy</a></li>
+    </ul>
+    <p>
+      This product uses the TMDB API but is <strong>not endorsed or certified by TMDB</strong>.
+    </p>
+
+    <h2>4. How we use information</h2>
+    <ul>
+      <li>Provide catalog browsing, search, detail pages, and trailers</li>
+      <li>Sync My List / Watched state to your device / profile ID</li>
+      <li>Apply remote configuration (features, ads, force-update, maintenance)</li>
+      <li>Show advertisements when enabled</li>
+      <li>Improve reliability and user experience</li>
+      <li>Respond to support or data-deletion requests you send us</li>
+    </ul>
+    <p>We do <strong>not sell</strong> your personal information.</p>
+
+    <h2>5. Legal bases (where applicable)</h2>
+    <p>Depending on your location, we process information based on:</p>
+    <ul>
+      <li><strong>Performance of the service</strong> you request (catalog, lists, trailers)</li>
+      <li><strong>Legitimate interests</strong> such as securing the API, preventing abuse, and improving the app</li>
+      <li><strong>Consent</strong> where required for personalized advertising (controlled via your device / Google ad settings)</li>
+    </ul>
+
+    <h2>6. Data sharing</h2>
+    <p>We share data only as needed to operate the app:</p>
+    <ul>
+      <li>With hosting / infrastructure providers that run our API</li>
+      <li>With Google (AdMob, Firebase, YouTube) as described above</li>
+      <li>If required by law, regulation, or valid legal process</li>
+      <li>In connection with a merger, acquisition, or asset transfer (with notice where required)</li>
+    </ul>
+
+    <h2>7. Data retention</h2>
+    <ul>
+      <li><strong>On your device:</strong> until you clear app storage or uninstall Movflik</li>
+      <li><strong>On our servers:</strong> list data tied to your device / profile ID is kept while the feature is used, until you request deletion, or until we remove inactive records during routine maintenance</li>
+      <li><strong>Ads / Firebase / YouTube:</strong> retained according to those providers’ policies</li>
+    </ul>
+
+    <h2>8. Children’s privacy</h2>
+    <p>
+      Movflik is intended for a general audience interested in movies and TV and is <strong>not directed to children under 13</strong>.
+      We do not knowingly collect personal information from children under 13.
+      Movie and TV posters or trailers may include mature themes. Do not use Movflik if you are under 13.
+      If you believe a child has provided information to us, contact us and we will take reasonable steps to delete it.
+    </p>
+    <p>
+      Movflik is <strong>not</strong> designed for use primarily by children and should not be submitted under
+      Google Play’s Families / Designed for Families programs unless content and ads are fully child-directed compliant.
+    </p>
+
+    <h2>9. Your choices and rights</h2>
+    <ul>
+      <li><strong>Delete local data:</strong> Android Settings → Apps → Movflik → Storage → Clear data, or uninstall the app</li>
+      <li><strong>Remove list items:</strong> use in-app My List / Watched controls</li>
+      <li><strong>Advertising ID / personalization:</strong> Android Settings → Google → Ads (wording may vary by device) to reset or limit ad personalization</li>
+      <li><strong>Request server data deletion:</strong> email us (below) and include your device / profile ID if you know it, or describe your request. We will delete list data associated with that ID where reasonably identifiable</li>
+    </ul>
+    <p>
+      Depending on your region (for example GDPR / similar laws), you may also have rights to access, correct,
+      restrict, or object to certain processing. Contact us to exercise those rights.
+    </p>
+
+    <h2>10. Permissions</h2>
+    <p>
+      Movflik requires <strong>Internet</strong> access to load catalog data, images, configuration, trailers, and ads.
+      The app does not request access to your camera, microphone, contacts, SMS, or precise location.
+    </p>
+
+    <h2>11. Security</h2>
+    <p>
+      We use HTTPS for network requests to our API. No method of electronic storage or transmission is 100% secure.
+      We take reasonable technical and organizational measures appropriate to the nature of the data we handle.
+    </p>
+
+    <h2>12. International users</h2>
+    <p>
+      If you use Movflik outside the country where our servers or service providers operate, your information
+      may be processed in other countries that may have different data-protection laws.
+    </p>
+
+    <h2>13. Third-party trademarks and content</h2>
+    <p>
+      Streaming service names and logos are trademarks of their respective owners and are shown only as catalog /
+      availability information. Movie and TV artwork and metadata are provided via TMDB and related sources.
+      All rights belong to their respective owners.
+    </p>
+
+    <h2>14. Changes to this policy</h2>
+    <p>
+      We may update this Privacy Policy from time to time. The updated version will be posted at this same URL
+      with a new “Last updated” date. Continued use of Movflik after changes means you accept the updated policy.
+    </p>
+
+    <h2>15. Contact</h2>
+    <p>Questions about this Privacy Policy or your data:</p>
+    <ul>
+      <li><strong>Email:</strong> <a href="mailto:support@myappworld.in">support@myappworld.in</a></li>
+      <li><strong>Developer:</strong> GrowDev</li>
+      <li><strong>App package:</strong> com.growdev.movflik</li>
+      <li><strong>Policy URL:</strong> <a href="https://app.myappworld.in/tmdb/privacy-policy.html">https://app.myappworld.in/tmdb/privacy-policy.html</a></li>
+    </ul>
+    <p class="meta">
+      If this email is not monitored yet, replace it with your Play Console support email before publishing.
+    </p>
+
+    <footer>
+      © 2026 GrowDev · Movflik Privacy Policy<br />
+      Host this file publicly and paste the URL in Google Play Console → App content → Privacy policy.
+    </footer>
+  </div>
+</body>
+</html>

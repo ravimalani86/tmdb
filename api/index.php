@@ -19,6 +19,29 @@ require __DIR__ . '/SyncMediaWriter.php';
 require __DIR__ . '/SyncEnqueueService.php';
 require __DIR__ . '/SyncProcessService.php';
 require __DIR__ . '/SyncAdminRepository.php';
+// FirebaseRemoteConfigAdmin loaded only for /admin/remote-config/* routes.
+
+// Return JSON on unexpected fatals (empty HTML 500 is hard to debug on live).
+register_shutdown_function(static function (): void {
+    $err = error_get_last();
+    if ($err === null) {
+        return;
+    }
+    $type = (int) ($err['type'] ?? 0);
+    if (!in_array($type, [E_ERROR, E_PARSE, E_CORE_ERROR, E_COMPILE_ERROR], true)) {
+        return;
+    }
+    if (headers_sent()) {
+        return;
+    }
+    http_response_code(500);
+    header('Content-Type: application/json; charset=utf-8');
+    echo json_encode([
+        'error' => 'PHP fatal: ' . (string) ($err['message'] ?? 'unknown'),
+        'file' => (string) ($err['file'] ?? ''),
+        'line' => (int) ($err['line'] ?? 0),
+    ], JSON_UNESCAPED_SLASHES);
+});
 
 header('Access-Control-Allow-Origin: ' . $config['cors_origin']);
 header('Access-Control-Allow-Methods: POST, OPTIONS');
@@ -52,6 +75,70 @@ try {
         $input = $decoded;
     }
 
+    $uri = $_SERVER['REQUEST_URI'] ?? '/';
+    $path = parse_url($uri, PHP_URL_PATH) ?? '/';
+    $path = rawurldecode($path);
+
+    $path = preg_replace('#^.*?/api#', '', $path) ?? $path;
+    $path = '/' . trim($path, '/');
+
+    // --- Admin Firebase Remote Config (no DB required) ---
+    if (str_starts_with($path, '/admin/remote-config')) {
+        $adminKey = (string) ($config['admin_api_key'] ?? '');
+        if ($adminKey === '' || !hash_equals($adminKey, $providedApiKey)) {
+            json_error('Unauthorized (admin)', 401);
+        }
+
+        $rcClassFile = __DIR__ . DIRECTORY_SEPARATOR . 'FirebaseRemoteConfigAdmin.php';
+        if (!is_readable($rcClassFile)) {
+            json_error(
+                'FirebaseRemoteConfigAdmin.php missing on this server — deploy api/FirebaseRemoteConfigAdmin.php',
+                500
+            );
+        }
+        require_once $rcClassFile;
+        if (!class_exists('FirebaseRemoteConfigAdmin')) {
+            json_error('FirebaseRemoteConfigAdmin class failed to load', 500);
+        }
+
+        $rcAdmin = new FirebaseRemoteConfigAdmin($config);
+
+        if ($path === '/admin/remote-config/status') {
+            json_response(['firebase' => $rcAdmin->setupStatus()]);
+        }
+
+        if ($path === '/admin/remote-config/get') {
+            try {
+                json_response($rcAdmin->getMovflikConfig());
+            } catch (Throwable $e) {
+                error_log('admin remote-config get: ' . $e->getMessage());
+                json_error($e->getMessage(), 500);
+            }
+        }
+
+        if ($path === '/admin/remote-config/save') {
+            $bump = !array_key_exists('bump_version', $input)
+                || (bool) $input['bump_version'];
+            $configPayload = $input['config'] ?? null;
+            if ($configPayload === null && isset($input['raw']) && is_string($input['raw'])) {
+                $configPayload = $input['raw'];
+            }
+            if ($configPayload === null) {
+                json_error('config (object) or raw (JSON string) is required', 400);
+            }
+            try {
+                json_response($rcAdmin->publishMovflikConfig($configPayload, $bump));
+            } catch (InvalidArgumentException $e) {
+                json_error($e->getMessage(), 400);
+            } catch (Throwable $e) {
+                error_log('admin remote-config save: ' . $e->getMessage());
+                json_error($e->getMessage(), 500);
+            }
+        }
+
+        json_error('Admin remote-config endpoint not found', 404);
+    }
+
     $pdo = Database::connection($config);
     $movies = new MovieRepository($pdo);
     $tv = new TvRepository($pdo);
@@ -59,13 +146,6 @@ try {
     $providers = new ProviderRepository($pdo);
     $userState = new UserStateRepository($pdo);
     $people = new PersonRepository($pdo);
-
-    $uri = $_SERVER['REQUEST_URI'] ?? '/';
-    $path = parse_url($uri, PHP_URL_PATH) ?? '/';
-    $path = rawurldecode($path);
-
-    $path = preg_replace('#^.*?/api#', '', $path) ?? $path;
-    $path = '/' . trim($path, '/');
 
     if ($path === '/' || $path === '') {
         json_response([
@@ -92,7 +172,6 @@ try {
                 'POST /tv/{tmdb_id}/images',
                 'POST /tv/{tmdb_id}/keywords',
                 'POST /tv/{tmdb_id}/recommendations',
-                'POST /app/config',
                 'POST /home/bootstrap',
                 'POST /home/row',
                 'POST /home/feed',
@@ -109,6 +188,9 @@ try {
                 'POST /admin/sync/enqueue',
                 'POST /admin/sync/process',
                 'POST /admin/sync/run',
+                'POST /admin/remote-config/status',
+                'POST /admin/remote-config/get',
+                'POST /admin/remote-config/save',
             ],
         ]);
     }
@@ -184,22 +266,6 @@ try {
         }
 
         json_error('Admin sync endpoint not found', 404);
-    }
-
-    if ($path === '/app/config') {
-        $configPath = __DIR__ . DIRECTORY_SEPARATOR . 'movflik_remote_config.json';
-        if (!is_readable($configPath)) {
-            json_error('Remote config not found', 404);
-        }
-        $raw = file_get_contents($configPath);
-        if ($raw === false || trim($raw) === '') {
-            json_error('Remote config empty', 500);
-        }
-        $decoded = json_decode($raw, true);
-        if (!is_array($decoded)) {
-            json_error('Remote config invalid JSON', 500);
-        }
-        json_response($decoded);
     }
 
     if ($path === '/home/bootstrap' || $path === '/home/row' || $path === '/home/feed') {

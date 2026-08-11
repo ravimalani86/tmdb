@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Movflik Remote Config Admin</title>
+  <style>
+    :root {
+      --bg: #0f1419;
+      --panel: #1a222c;
+      --border: #2c3845;
+      --text: #e8eef4;
+      --muted: #8b9aab;
+      --accent: #3d9cf0;
+      --ok: #3dba7a;
+      --warn: #e0a44a;
+      --bad: #e05a5a;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Segoe UI", system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.45;
+    }
+    .wrap { max-width: 1100px; margin: 0 auto; padding: 24px 16px 48px; }
+    h1 { font-size: 1.35rem; margin: 0 0 4px; font-weight: 650; }
+    .sub { color: var(--muted); font-size: 0.9rem; margin-bottom: 20px; }
+    .sub a { color: var(--accent); }
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 16px 18px;
+      margin-bottom: 16px;
+    }
+    .panel h2 {
+      margin: 0 0 12px;
+      font-size: 0.95rem;
+      font-weight: 600;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+    .row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+    label { font-size: 0.9rem; color: var(--muted); }
+    input[type="text"], input[type="password"] {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      color: var(--text);
+      border-radius: 6px;
+      padding: 8px 10px;
+      font-size: 0.95rem;
+      min-width: 0;
+    }
+    input[type="password"], #apiBase { flex: 1; min-width: 180px; }
+    button {
+      background: var(--accent);
+      color: #fff;
+      border: 0;
+      border-radius: 6px;
+      padding: 8px 14px;
+      font-size: 0.9rem;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
+    button.secondary { background: #2c3845; }
+    button.danger { background: #a33a3a; }
+    .hint { color: var(--muted); font-size: 0.82rem; margin: 0 0 12px; }
+    .msg { margin-top: 10px; font-size: 0.9rem; white-space: pre-wrap; }
+    .msg.ok { color: var(--ok); }
+    .msg.err { color: var(--bad); }
+    .msg.warn { color: var(--warn); }
+    .meta { color: var(--muted); font-size: 0.8rem; margin-top: 8px; }
+    .pill {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 999px;
+      background: #243040;
+      font-size: 0.75rem;
+      color: var(--muted);
+      margin-right: 6px;
+    }
+    .pill.ok { color: var(--ok); }
+    .pill.bad { color: var(--bad); }
+    textarea {
+      width: 100%;
+      min-height: 520px;
+      background: #0b1015;
+      border: 1px solid var(--border);
+      color: var(--text);
+      border-radius: 8px;
+      padding: 12px;
+      font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
+      font-size: 0.82rem;
+      line-height: 1.45;
+      resize: vertical;
+    }
+    .checks { display: flex; flex-wrap: wrap; gap: 14px; margin: 8px 0 12px; }
+    .checks label { display: flex; align-items: center; gap: 6px; color: var(--text); cursor: pointer; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>Movflik Remote Config Admin</h1>
+    <p class="sub">
+      Edit Firebase parameter <code>movflik_config</code> and publish.
+      Apps refresh in near real-time.
+      <a href="admin-sync.html">Sync Admin →</a>
+    </p>
+
+    <div class="panel">
+      <h2>Connection</h2>
+      <div class="row">
+        <label for="apiBase">API base</label>
+        <input id="apiBase" type="text" placeholder="https://app.myappworld.in/tmdb/api" />
+      </div>
+      <div class="row" style="margin-top:10px">
+        <label for="apiKey">X-API-Key</label>
+        <input id="apiKey" type="password" placeholder="Admin / API key" autocomplete="off" />
+        <button type="button" class="secondary" id="btnSaveConn">Save</button>
+        <button type="button" class="secondary" id="btnStatus">Check setup</button>
+      </div>
+      <div class="msg" id="connMsg"></div>
+      <div class="meta" id="setupMeta"></div>
+    </div>
+
+    <div class="panel">
+      <h2>movflik_config JSON</h2>
+      <p class="hint">
+        Load from Firebase, edit carefully, then Publish.
+        Prefer bumping <code>config_version</code> so apps apply the change.
+      </p>
+      <div class="row" style="margin-bottom:10px">
+        <button type="button" id="btnLoad">Load from Firebase</button>
+        <button type="button" class="secondary" id="btnFormat">Format JSON</button>
+        <button type="button" class="secondary" id="btnValidate">Validate</button>
+        <button type="button" class="danger" id="btnPublish">Publish to Firebase</button>
+      </div>
+      <div class="checks">
+        <label><input type="checkbox" id="bumpVersion" checked /> Bump config_version on publish</label>
+      </div>
+      <textarea id="editor" spellcheck="false" placeholder='Click "Load from Firebase"…'></textarea>
+      <div class="msg" id="editMsg"></div>
+      <div class="meta" id="editMeta"></div>
+    </div>
+  </div>
+
+  <script>
+    const LS_BASE = 'movflik_rc_admin_base';
+    const LS_KEY = 'movflik_rc_admin_key';
+
+    const apiBaseEl = document.getElementById('apiBase');
+    const apiKeyEl = document.getElementById('apiKey');
+    const connMsg = document.getElementById('connMsg');
+    const setupMeta = document.getElementById('setupMeta');
+    const editor = document.getElementById('editor');
+    const editMsg = document.getElementById('editMsg');
+    const editMeta = document.getElementById('editMeta');
+    const bumpVersionEl = document.getElementById('bumpVersion');
+
+    apiBaseEl.value = localStorage.getItem(LS_BASE) || defaultBase();
+    apiKeyEl.value = localStorage.getItem(LS_KEY) || '';
+
+    function defaultBase() {
+      const path = location.pathname.replace(/\/[^/]*$/, '');
+      return location.origin + path;
+    }
+
+    function setMsg(el, text, kind) {
+      el.textContent = text || '';
+      el.className = 'msg' + (kind ? ' ' + kind : '');
+    }
+
+    function baseUrl() {
+      return (apiBaseEl.value || '').replace(/\/+$/, '');
+    }
+
+    async function api(path, body) {
+      const res = await fetch(baseUrl() + path, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-API-Key': apiKeyEl.value || '',
+        },
+        body: JSON.stringify(body || {}),
+      });
+      const text = await res.text();
+      let data;
+      try { data = JSON.parse(text); } catch (_) {
+        const snippet = (text || '').replace(/\s+/g, ' ').slice(0, 280);
+        throw new Error(
+          'Non-JSON response HTTP ' + res.status +
+          (snippet ? (': ' + snippet) : ' (empty body — is API base pointing to a server that has the new files?)')
+        );
+      }
+      if (!res.ok) {
+        throw new Error((data && data.error) || ('HTTP ' + res.status));
+      }
+      return data;
+    }
+
+    document.getElementById('btnSaveConn').onclick = () => {
+      localStorage.setItem(LS_BASE, apiBaseEl.value.trim());
+      localStorage.setItem(LS_KEY, apiKeyEl.value);
+      setMsg(connMsg, 'Saved in this browser.', 'ok');
+    };
+
+    document.getElementById('btnStatus').onclick = async () => {
+      setMsg(connMsg, 'Checking…');
+      try {
+        const data = await api('/admin/remote-config/status', {});
+        const f = data.firebase || {};
+        setupMeta.innerHTML =
+          '<span class="pill ' + (f.configured ? 'ok' : 'bad') + '">' +
+          (f.configured ? 'configured' : 'not configured') + '</span>' +
+          ' project=<code>' + (f.project_id || '') + '</code>' +
+          ' key=<code>' + (f.parameter_key || '') + '</code>' +
+          ' sa=' + (f.service_account_present ? 'yes' : 'missing');
+        setMsg(
+          connMsg,
+          f.configured
+            ? 'Firebase admin ready.'
+            : 'Add service account JSON + FIREBASE_* env, then retry.',
+          f.configured ? 'ok' : 'warn'
+        );
+      } catch (e) {
+        setMsg(connMsg, e.message || String(e), 'err');
+      }
+    };
+
+    document.getElementById('btnLoad').onclick = async () => {
+      setMsg(editMsg, 'Loading…');
+      try {
+        const data = await api('/admin/remote-config/get', {});
+        const pretty = data.config
+          ? JSON.stringify(data.config, null, 2)
+          : (data.raw || '');
+        editor.value = pretty;
+        editMeta.textContent =
+          'etag=' + (data.etag || '') +
+          (data.template_version && data.template_version.versionNumber
+            ? ' · firebase version=' + data.template_version.versionNumber
+            : '') +
+          (data.config && data.config.config_version != null
+            ? ' · config_version=' + data.config.config_version
+            : '');
+        if (data.parse_error) {
+          setMsg(editMsg, data.parse_error, 'warn');
+        } else if (!pretty) {
+          setMsg(editMsg, 'Parameter empty — paste JSON then Publish.', 'warn');
+        } else {
+          setMsg(editMsg, 'Loaded from Firebase.', 'ok');
+        }
+      } catch (e) {
+        setMsg(editMsg, e.message || String(e), 'err');
+      }
+    };
+
+    document.getElementById('btnFormat').onclick = () => {
+      try {
+        const obj = JSON.parse(editor.value);
+        editor.value = JSON.stringify(obj, null, 2);
+        setMsg(editMsg, 'Formatted.', 'ok');
+      } catch (e) {
+        setMsg(editMsg, 'Invalid JSON: ' + e.message, 'err');
+      }
+    };
+
+    document.getElementById('btnValidate').onclick = () => {
+      try {
+        const obj = JSON.parse(editor.value);
+        if (!obj || typeof obj !== 'object' || Array.isArray(obj)) {
+          throw new Error('Root must be a JSON object');
+        }
+        setMsg(
+          editMsg,
+          'Valid JSON. config_version=' + (obj.config_version ?? '(missing)'),
+          'ok'
+        );
+      } catch (e) {
+        setMsg(editMsg, 'Invalid JSON: ' + e.message, 'err');
+      }
+    };
+
+    document.getElementById('btnPublish').onclick = async () => {
+      let obj;
+      try {
+        obj = JSON.parse(editor.value);
+      } catch (e) {
+        setMsg(editMsg, 'Fix JSON before publish: ' + e.message, 'err');
+        return;
+      }
+      if (!obj || typeof obj !== 'object' || Array.isArray(obj)) {
+        setMsg(editMsg, 'Root must be a JSON object', 'err');
+        return;
+      }
+      const bump = !!bumpVersionEl.checked;
+      const nextHint = bump
+        ? 'Bump version ' + (obj.config_version || 0) + ' → ' + ((obj.config_version || 0) + 1) + ' and publish?'
+        : 'Publish without bumping config_version?';
+      if (!confirm(nextHint)) return;
+
+      setMsg(editMsg, 'Publishing…');
+      try {
+        const data = await api('/admin/remote-config/save', {
+          config: obj,
+          bump_version: bump,
+        });
+        setMsg(
+          editMsg,
+          'Published. config_version=' + data.config_version +
+            ' · published_at=' + (data.published_at || ''),
+          'ok'
+        );
+        editMeta.textContent =
+          'etag=' + (data.etag || '') +
+          ' · config_version=' + data.config_version;
+        // Reload so editor shows bumped version / updated_at
+        const fresh = await api('/admin/remote-config/get', {});
+        if (fresh.config) {
+          editor.value = JSON.stringify(fresh.config, null, 2);
+        }
+      } catch (e) {
+        setMsg(editMsg, e.message || String(e), 'err');
+      }
+    };
+  </script>
+</body>
+</html>

@@ -1,41 +1,36 @@
-# TMDB Local Mirror
+# TMDB Local API
 
-Local movie & TV catalog powered by [TMDB](https://www.themoviedb.org/) API.  
-Data syncs into **MySQL (XAMPP)** via Python, then serves to your app through a **Core PHP REST API**.
-
----
-
-## Stack
+Local movie & TV catalog for **Movflik**. Data lives in MySQL; Flutter talks only to this **PHP API** (never public TMDB). Daily catalog refresh is **PHP admin sync** + cron.
 
 | Layer | Tech |
 |-------|------|
-| Sync engine | Python 3, SQLAlchemy, requests |
-| Database | MySQL (`tmdbdata`) |
 | API | Core PHP (PDO) |
-| Config | `.env`, `providers_config.json` |
+| Database | MySQL (`tmdbdata`) |
+| Sync | PHP admin endpoints + server cron |
+| Config | `.env` / `api/.env`, `providers_config.json` |
+| Ops UI | `api/admin-sync.html` |
 
 ---
 
-## Prerequisites
+## URLs
 
-- **XAMPP** — Apache + MySQL running
-- **Python 3** — `py` launcher (Windows Git Bash)
-- **TMDB API key** — [themoviedb.org/settings/api](https://www.themoviedb.org/settings/api)
+| Env | Base |
+|-----|------|
+| Live | `https://app.myappworld.in/tmdb/api` |
+| Local (XAMPP) | `http://localhost/tmdb/api` |
+
+**Auth (all endpoints):** header `X-API-Key: <API_KEY>`  
+Admin sync also accepts `ADMIN_API_KEY` (defaults to `API_KEY`).
+
+**Method:** `POST` only. JSON body. No query-string filters.
 
 ---
 
 ## Setup
 
-### 1. Install Python dependencies
+### 1. Env
 
-```bash
-cd /d/tmdb
-py -m pip install -r requirements.txt
-```
-
-### 2. Configure environment
-
-Copy `.env` and set your values:
+Create project root `.env` and/or `api/.env`:
 
 ```env
 DB_HOST=localhost
@@ -44,232 +39,479 @@ DB_USER=root
 DB_PASSWORD=
 DB_NAME=tmdbdata
 
-TMDB_API_KEY=your_api_key
-TMDB_API_READ_ACCESS_TOKEN=your_read_token
+API_KEY=tmdb_flutter_secret_123
+# Optional separate admin key (defaults to API_KEY)
+# ADMIN_API_KEY=your_admin_secret
 
-# Multi-key pool (detail + seasons workers). Comma-separated, paired by index.
-TMDB_API_KEYS=key1,key2,key3,key4,key5
-TMDB_API_READ_ACCESS_TOKENS=token1,token2,token3,token4,token5
-SYNC_WORKERS=5
+TMDB_API_KEY=your_primary_tmdb_key
+TMDB_API_KEYS=key1,key2,key3,key4,key5,key6
 
-RATE_LIMIT_SLEEP=0.25
-SYNC_MOVIE_LITE=true
-SYNC_PROVIDERS_FILE=providers_config.json
-WITH_WATCH_MONETIZATION_TYPES=flatrate
+# Optional
+# RATE_LIMIT_SLEEP=0.2
+# SYNC_PROVIDERS_FILE=providers_config.json
+# WITH_WATCH_MONETIZATION_TYPES=flatrate
+# PUBLIC_BASE_URL=https://app.myappworld.in/tmdb
+# API_CORS_ORIGIN=*
 ```
 
-Keys vadhare → `.env` ma list ma add karo; `SYNC_WORKERS` optional (default = key count).
+### 2. Files on server
 
-### 3. Create database tables
+- Entire `api/` folder (PHP + `.htaccess`)
+- Root `providers_config.json`
+- `logos/` (provider PNGs)
 
-```bash
-py scripts/create_tables.py
+### 3. Queue table (once)
+
+```sql
+CREATE TABLE IF NOT EXISTS media_sync_queue (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  media_type VARCHAR(16) NOT NULL,
+  tmdb_id INT NOT NULL,
+  sync_day VARCHAR(10) NOT NULL COMMENT 'YYYY-MM-DD (IST calendar day)',
+  source VARCHAR(32) NOT NULL DEFAULT 'changes',
+  status VARCHAR(20) NOT NULL DEFAULT 'pending',
+  attempts INT NOT NULL DEFAULT 0,
+  last_error TEXT NULL,
+  worker_id INT NULL,
+  enqueued_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  started_at DATETIME NULL,
+  finished_at DATETIME NULL,
+  UNIQUE KEY uq_media_sync_queue_day_item (media_type, tmdb_id, sync_day),
+  KEY ix_media_sync_queue_status (status),
+  KEY ix_media_sync_queue_day (sync_day),
+  KEY ix_media_sync_queue_type (media_type),
+  KEY ix_media_sync_queue_tmdb (tmdb_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 ```
 
-### 4. Sync genres (run once first)
+### 4. Smoke test
 
 ```bash
-py scripts/sync_genres.py
+curl -sS -X POST "http://localhost/tmdb/api/" \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: tmdb_flutter_secret_123" \
+  -d '{}'
+```
+
+Returns API name, version, and endpoint list.
+
+---
+
+## API reference
+
+Replace `BASE` with live or local URL. Replace `YOUR_KEY` with `API_KEY`.
+
+### Meta
+
+| Endpoint | Body | Notes |
+|----------|------|--------|
+| `POST /` | `{}` | Health + endpoint list |
+
+```bash
+curl -sS -X POST "BASE/" \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: YOUR_KEY" \
+  -d '{}'
 ```
 
 ---
 
-## Sync workflow
+### Home feed
 
-**Recommended order**
+| Endpoint | Body fields | Notes |
+|----------|-------------|--------|
+| `POST /home/bootstrap` | `filter`, `country`, `device_id?` | Fast first paint |
+| `POST /home/row` | `filter`, `row`, `country`, `device_id?` | One row |
+| `POST /home/feed` | `filter`, `country`, `device_id?` | Full feed |
 
-1. `sync_movies_detail` (workers + key pool — one process)
-2. Movie individual phases in parallel (one key each via `SYNC_KEY_INDEX`)
-3. `sync_tv_detail` (workers)
-4. TV individual phases in parallel
-5. `sync_tv_seasons` last (workers) — never with credits
-
-Every phase saves a **checkpoint** — if interrupted, re-run the same script to resume.
-
-### Multi-key parallel phases
-
-Detail + seasons use `TMDB_API_KEYS` automatically (`SYNC_WORKERS`).
-
-Individual scripts (credits, providers, …) — separate terminals, different key index:
+`filter`: `all` \| `movies` \| `tv`  
+`country`: e.g. `IN` (default `ALL` if omitted)  
+`row` examples: `trending_movies`, `trending_tv`, `top_10`, `my_list`, `hindi`, `tamil`, `action`, `on_netflix`, `jiohotstar`, `prime_video`, `zee5`, `top_rated`, …
 
 ```bash
-# Git Bash / Linux
-SYNC_KEY_INDEX=0 py scripts/sync_movies_credits.py &
-SYNC_KEY_INDEX=1 py scripts/sync_movies_providers.py &
-SYNC_KEY_INDEX=2 py scripts/sync_movies_similar.py &
-SYNC_KEY_INDEX=3 py scripts/sync_movies_videos.py &
-wait
-```
+# Bootstrap
+curl -sS -X POST "BASE/home/bootstrap" \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: YOUR_KEY" \
+  -d '{"filter":"all","country":"IN","device_id":"device-uuid"}'
 
-Do **not** run detail/seasons together with parallel individual scripts. Max parallel individual scripts ≈ number of keys.
-
-### Provider filter
-
-When `SYNC_PROVIDERS_FILE=providers_config.json` is set, **Phase 1** (movies & TV detail) uses TMDB `discover` API to sync only content on your configured providers (Netflix, Prime, Hotstar, etc.) across **US, IN, JP**.
-
-Edit providers in [`providers_config.json`](providers_config.json).
-
-Optional — sync one region only:
-
-```env
-SYNC_REGIONS=IN
+# Single row
+curl -sS -X POST "BASE/home/row" \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: YOUR_KEY" \
+  -d '{"filter":"all","country":"IN","row":"hindi"}'
 ```
 
 ---
 
 ### Movies
 
-| Phase | Script | What it syncs |
-|-------|--------|---------------|
-| 1 | `py scripts/sync_movies_detail.py` | Show list + `GET /movie/{id}` — poster, banner, rating, genres (**multi-key workers**) |
-| 2 | `py scripts/sync_movies_credits.py` | Cast & crew (`GET /movie/{id}/credits`) |
-| 3 | `py scripts/sync_movies_providers.py` | Watch providers (`GET /movie/{id}/watch/providers`) |
-| 4 | `py scripts/sync_movies_similar.py` | Similar movies (`GET /movie/{id}/similar`) |
-| 5 | `py scripts/sync_movies_videos.py` | Trailers & clips (`GET /movie/{id}/videos`) |
-| 6 | `py scripts/sync_movies_images.py` | Extra posters & backdrops (`GET /movie/{id}/images`) |
-| 7 | `py scripts/sync_movies_keywords.py` | Keywords/tags (`GET /movie/{id}/keywords`) |
-| 8 | `py scripts/sync_movies_recommendations.py` | Recommendations (`GET /movie/{id}/recommendations`) |
+| Endpoint | Body |
+|----------|------|
+| `POST /movies` | List + filters (below) |
+| `POST /movies/{tmdb_id}` | `device_id?` |
+| `POST /movies/{tmdb_id}/credits` | `{}` |
+| `POST /movies/{tmdb_id}/providers` | `{}` |
+| `POST /movies/{tmdb_id}/similar` | `{}` |
+| `POST /movies/{tmdb_id}/videos` | `{}` |
+| `POST /movies/{tmdb_id}/images` | `{}` |
+| `POST /movies/{tmdb_id}/keywords` | `{}` |
+| `POST /movies/{tmdb_id}/recommendations` | `{}` |
+
+**List filters (`/movies`):**
+
+| Field | Example | Notes |
+|-------|---------|--------|
+| `page` | `1` | |
+| `limit` | `20` | 1–50 |
+| `sort` | `popularity` | also date / vote fields (see API) |
+| `order` | `desc` | `asc` \| `desc` |
+| `search` | `"avatar"` | |
+| `genre_id` | `28` or `[28,35]` | |
+| `provider_id` | `8` | Netflix = 8 |
+| `country` | `"IN"` or `["IN"]` | |
+| `original_language` | `"hi"` | |
+| `spoken_language` | `"hi"` | |
+| `vote_average_gte` | `7` | |
+| `vote_count_gte` | `100` | |
+| `release_date_gte` | `"2024-01-01"` | |
+| `release_date_lte` | `"2026-12-31"` | |
+| `released_only` | `true` | |
+| `device_id` | `"uuid"` | required with saved/watched |
+| `saved_only` | `true` | |
+| `watched_only` | `true` | |
+| `include_total` | `false` | |
 
 ```bash
-py scripts/sync_movies_detail.py
-# then parallel with SYNC_KEY_INDEX=0..n
-py scripts/sync_movies_credits.py
-py scripts/sync_movies_providers.py
-py scripts/sync_movies_similar.py
-py scripts/sync_movies_videos.py
-py scripts/sync_movies_images.py
-py scripts/sync_movies_keywords.py
-py scripts/sync_movies_recommendations.py
-```
+# Popular Hindi action on Netflix (IN)
+curl -sS -X POST "BASE/movies" \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: YOUR_KEY" \
+  -d '{
+    "page": 1,
+    "limit": 20,
+    "sort": "popularity",
+    "order": "desc",
+    "genre_id": 28,
+    "provider_id": 8,
+    "country": "IN",
+    "original_language": "hi",
+    "released_only": true
+  }'
 
-Phases 5–8 are **optional** — exposed in PHP API as `videos`, `images`, `keywords`, `recommendations` on detail + split endpoints.
+# Detail
+curl -sS -X POST "BASE/movies/19995" \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: YOUR_KEY" \
+  -d '{"device_id":"device-uuid"}'
 
-**Spoken languages** are saved during Phase 1 (detail sync). Re-run detail sync to backfill existing movies/TV:
-
-```bash
-py scripts/sync_movies_detail.py
-py scripts/sync_tv_detail.py
+# Trailers
+curl -sS -X POST "BASE/movies/19995/videos" \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: YOUR_KEY" \
+  -d '{}'
 ```
 
 ---
 
-### TV Shows
+### TV
 
-| Phase | Script | What it syncs |
-|-------|--------|---------------|
-| 1 | `py scripts/sync_tv_detail.py` | Show list + `GET /tv/{id}` — poster, banner, rating, genres (**multi-key workers**) |
-| 2 | `py scripts/sync_tv_credits.py` | Cast & crew via aggregate_credits (includes episode_count per character) |
-
-> First time after this update: `py scripts/add_credits_episode_count.py`, then re-run phase 2 so existing TV cast gets episode counts.
-| 3 | `py scripts/sync_tv_providers.py` | Watch providers |
-| 4 | `py scripts/sync_tv_similar.py` | Similar TV shows |
-| 5 | `py scripts/sync_tv_seasons.py` | Seasons + episodes + episode guest cast/crew (**multi-key workers** — run last) |
-| 6 | `py scripts/sync_tv_videos.py` | Trailers & clips |
-| 7 | `py scripts/sync_tv_images.py` | Extra posters & backdrops |
-| 8 | `py scripts/sync_tv_keywords.py` | Keywords/tags |
-| 9 | `py scripts/sync_tv_recommendations.py` | Recommendations |
-
-```bash
-py scripts/sync_tv_detail.py
-# then parallel with SYNC_KEY_INDEX=0..n
-py scripts/sync_tv_credits.py
-py scripts/sync_tv_providers.py
-py scripts/sync_tv_similar.py
-py scripts/sync_tv_videos.py
-py scripts/sync_tv_images.py
-py scripts/sync_tv_keywords.py
-py scripts/sync_tv_recommendations.py
-# last
-py scripts/sync_tv_seasons.py
-```
-
-**All TV phases at once (optional, sequential — no parallel keys):**
+| Endpoint | Body |
+|----------|------|
+| `POST /tv` | Same style filters as movies (`first_air_date_*` instead of `release_date_*`) |
+| `POST /tv/{tmdb_id}` | `device_id?` |
+| `POST /tv/{tmdb_id}/credits` | `{}` |
+| `POST /tv/{tmdb_id}/providers` | `{}` |
+| `POST /tv/{tmdb_id}/similar` | `{}` |
+| `POST /tv/{tmdb_id}/seasons` | `{}` |
+| `POST /tv/{tmdb_id}/season/{n}/episode/{m}` | `{}` |
+| `POST /tv/{tmdb_id}/videos` | `{}` |
+| `POST /tv/{tmdb_id}/images` | `{}` |
+| `POST /tv/{tmdb_id}/keywords` | `{}` |
+| `POST /tv/{tmdb_id}/recommendations` | `{}` |
 
 ```bash
-py scripts/sync_tv.py
+curl -sS -X POST "BASE/tv" \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: YOUR_KEY" \
+  -d '{"page":1,"limit":20,"sort":"popularity","country":"IN","provider_id":8}'
+
+curl -sS -X POST "BASE/tv/1396/season/1/episode/1" \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: YOUR_KEY" \
+  -d '{}'
 ```
 
 ---
 
-## PHP API
+### People / genres / providers
 
-Place project in XAMPP `htdocs` (e.g. `C:\xampp\htdocs\tmdb`).
+```bash
+# Person detail
+curl -sS -X POST "BASE/people/287" \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: YOUR_KEY" \
+  -d '{}'
 
-**Production:** `https://tmdb.growdevinfotech.in/api/`  
-**Local:** `http://localhost/tmdb/api/`
+# Genres (movie|tv)
+curl -sS -X POST "BASE/genres" \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: YOUR_KEY" \
+  -d '{"type":"movie"}'
 
-| Endpoint | Description |
-|----------|-------------|
-| `POST /movies` | Movie list with filters |
-| `POST /movies/{tmdb_id}` | Movie detail (+ videos, images, keywords, recommendations) |
-| `POST /tv` | TV list with filters |
-| `POST /tv/{tmdb_id}` | TV detail (+ seasons, videos, images, keywords, recommendations) |
-| `POST /tv/{tmdb_id}/season/{n}/episode/{e}` | Episode detail (+ guest cast, crew) |
-| `POST /movies\|tv/{tmdb_id}/videos` | Trailers only |
-| `POST /movies\|tv/{tmdb_id}/images` | Image gallery only |
-| `POST /movies\|tv/{tmdb_id}/keywords` | Keywords only |
-| `POST /movies\|tv/{tmdb_id}/recommendations` | Recommendations only |
-| `POST /genres?type=movie\|tv` | Genre filters |
-| `POST /providers?type=movie\|tv&country=US` | Provider filters |
-| `POST /user-state/watch` | Mark/unmark watched (per device) |
-| `POST /user-state/save-for-later` | Mark/unmark save-for-later (per device) |
-
-- List/detail endpoints accept optional `device_id` inside the JSON body to return per-device flags: `is_watched` and `is_saved_for_later`.
- 
-Security (required): send header `X-API-Key` with your configured API key (`API_KEY` in `api/.env`).
-
-Full API reference → [`API.md`](API.md)
-
----
-
-## Documentation
-
-| File | Contents |
-|------|----------|
-| [`API.md`](API.md) | REST API endpoints, params, response examples |
-| [`APP_LAYOUT.md`](APP_LAYOUT.md) | Mobile app screens, navigation, UI layout |
-| [`TMDB_LOCAL_DB_SYNC.md`](TMDB_LOCAL_DB_SYNC.md) | Database schema & sync architecture |
-
----
-
-## Project structure
-
+# Providers for country
+curl -sS -X POST "BASE/providers" \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: YOUR_KEY" \
+  -d '{"type":"movie","country":"IN"}'
 ```
+
+---
+
+### User state (My List / watched)
+
+```bash
+# Mark watched
+curl -sS -X POST "BASE/user-state/watch" \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: YOUR_KEY" \
+  -d '{"device_id":"device-uuid","media_type":"movie","tmdb_id":19995,"is_watched":true}'
+
+# Save for later
+curl -sS -X POST "BASE/user-state/save-for-later" \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: YOUR_KEY" \
+  -d '{"device_id":"device-uuid","media_type":"tv","tmdb_id":1396,"is_saved_for_later":true}'
+
+# List saved / watched
+curl -sS -X POST "BASE/user-state/list" \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: YOUR_KEY" \
+  -d '{"device_id":"device-uuid","filter":"saved","page":1,"limit":20}'
+```
+
+`filter`: `saved` \| `watched` \| `all`  
+Optional `media_type`: `movie` \| `tv`
+
+---
+
+## Admin sync API
+
+Base path: `/admin/sync/*`  
+Auth: `X-API-Key` must match `ADMIN_API_KEY` (or `API_KEY`).
+
+| Endpoint | Body | Purpose |
+|----------|------|---------|
+| `POST /admin/sync/status` | `{}` or `{"day":"YYYY-MM-DD"}` | Queue stats |
+| `POST /admin/sync/queue-overview` | `{}` | Broader queue view |
+| `POST /admin/sync/config` | `{}` | Read cron process config |
+| `POST /admin/sync/config/save` | `{"limit":5,"media_type":"movie"?}` | Save process limit / type |
+| `POST /admin/sync/enqueue` | `{}` or `{"day":"YYYY-MM-DD"}` | Fill today’s queue |
+| `POST /admin/sync/process` | `{"limit":5,"media_type":"tv"?}` | Process N items (1–450) |
+| `POST /admin/sync/run` | `{"limit":5,"day"?,"media_type"?}` | Enqueue + first process batch |
+
+**Sync day** = IST calendar “today” unless `day` override.  
+**Queue sources:** TMDB movie/tv/person changes ∩ DB + discover from `providers_config.json` + related people after media sync.  
+**Process:** full upsert (credits, videos, images, keywords, similar, recommendations, providers; TV = seasons).
+
+### Real examples (local)
+
+```bash
+# Status
+curl -sS -X POST "http://localhost/tmdb/api/admin/sync/status" \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: tmdb_flutter_secret_123" \
+  -d '{}'
+
+# Enqueue today
+curl -sS -X POST "http://localhost/tmdb/api/admin/sync/enqueue" \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: tmdb_flutter_secret_123" \
+  -d '{}'
+
+# Process batch
+curl -sS -X POST "http://localhost/tmdb/api/admin/sync/process" \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: tmdb_flutter_secret_123" \
+  -d '{"limit":5}'
+
+# One-shot enqueue + first batch
+curl -sS -X POST "http://localhost/tmdb/api/admin/sync/run" \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: tmdb_flutter_secret_123" \
+  -d '{"limit":5}'
+
+# Save preferred process limit
+curl -sS -X POST "http://localhost/tmdb/api/admin/sync/config/save" \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: tmdb_flutter_secret_123" \
+  -d '{"limit":5}'
+```
+
+### Real examples (live)
+
+```bash
+curl -sS -X POST "https://app.myappworld.in/tmdb/api/admin/sync/status" \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: YOUR_KEY" \
+  -d '{}'
+
+curl -sS -X POST "https://app.myappworld.in/tmdb/api/admin/sync/enqueue" \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: YOUR_KEY" \
+  -d '{}'
+
+curl -sS -X POST "https://app.myappworld.in/tmdb/api/admin/sync/process" \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: YOUR_KEY" \
+  -d '{"limit":5}'
+```
+
+Useful status fields: `engine` (`php`), `tmdb_keys`, `pending` / `running` / `done` / `failed`, `recent`.
+
+When `pending=0` and `running=0`, today’s work is done.
+
+---
+
+## Cron jobs (live)
+
+Enqueue **once** daily, then **process repeatedly** until queue empty (avoids PHP timeouts).
+
+### Recommended (two crons)
+
+**1) Morning enqueue** — IST 06:00 ≈ UTC 00:30
+
+```cron
+30 0 * * * curl -sS -X POST "https://app.myappworld.in/tmdb/api/admin/sync/enqueue" -H "Content-Type: application/json" -H "X-API-Key: YOUR_KEY" -d '{}' >> /home/USER/logs/tmdb-enqueue.log 2>&1
+```
+
+**2) Drain queue every 10 minutes**
+
+```cron
+*/10 * * * * curl -sS -X POST "https://app.myappworld.in/tmdb/api/admin/sync/process" -H "Content-Type: application/json" -H "X-API-Key: YOUR_KEY" -d '{"limit":5}' >> /home/USER/logs/tmdb-process.log 2>&1
+```
+
+`limit` tip: shared hosting `3`–`5`; stronger host `8`–`10`.
+
+### cPanel Cron Jobs UI
+
+1. **Enqueue** — once daily  
+
+```text
+curl -sS -X POST "https://app.myappworld.in/tmdb/api/admin/sync/enqueue" -H "Content-Type: application/json" -H "X-API-Key: YOUR_KEY" -d '{}'
+```
+
+2. **Process** — every 5–15 minutes  
+
+```text
+curl -sS -X POST "https://app.myappworld.in/tmdb/api/admin/sync/process" -H "Content-Type: application/json" -H "X-API-Key: YOUR_KEY" -d '{"limit":5}'
+```
+
+### Manual one-shot
+
+```bash
+curl -sS -X POST "https://app.myappworld.in/tmdb/api/admin/sync/run" \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: YOUR_KEY" \
+  -d '{"limit":5}'
+```
+
+`run` only processes the first `limit` items — keep calling `process` for the rest.
+
+---
+
+## Admin UI
+
+Browser UIs (same admin API key):
+
+| UI | URL |
+|----|-----|
+| Sync queue | Local: `http://localhost/tmdb/api/admin-sync.html` · Live: `https://app.myappworld.in/tmdb/api/admin-sync.html` |
+| Movflik Remote Config | Local: `http://localhost/tmdb/api/admin-remote-config.html` · Live: `https://app.myappworld.in/tmdb/api/admin-remote-config.html` |
+
+### Firebase Remote Config admin (Movflik JSON)
+
+Publishes parameter `movflik_config` so the Flutter app refreshes without a store update.
+
+**One-time Firebase setup**
+
+1. Firebase Console → Project settings → Service accounts → **Generate new private key**
+2. Save the JSON on the server as `api/firebase-service-account.json` (gitignored)
+3. In Google Cloud Console → IAM, ensure that service account can use **Firebase Remote Config Admin** (or Owner/Editor on the project)
+4. Add to `api/.env`:
+
+```env
+FIREBASE_PROJECT_ID=movflik
+FIREBASE_REMOTE_CONFIG_KEY=movflik_config
+# Optional if not using default path api/firebase-service-account.json
+# FIREBASE_SERVICE_ACCOUNT_PATH=api/firebase-service-account.json
+```
+
+**Admin API**
+
+| Endpoint | Body | Purpose |
+|----------|------|---------|
+| `POST /admin/remote-config/status` | `{}` | Setup check |
+| `POST /admin/remote-config/get` | `{}` | Load current `movflik_config` |
+| `POST /admin/remote-config/save` | `{"config":{...},"bump_version":true}` | Publish to Firebase |
+
+```bash
+# Status
+curl -sS -X POST "http://localhost/tmdb/api/admin/remote-config/status" \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: tmdb_flutter_secret_123" \
+  -d '{}'
+
+# Load
+curl -sS -X POST "http://localhost/tmdb/api/admin/remote-config/get" \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: tmdb_flutter_secret_123" \
+  -d '{}'
+```
+
+Postman collections (optional):
+
+- `TMDB_Local_API.postman_collection.json`
+- `TMDB_Daily_Sync_Cron.postman_collection.json`
+
+---
+
+## Failure / retry
+
+- Failed item → back to `pending` (`attempts++`)
+- `attempts >= 3` → `failed` (`last_error` set)
+- Stuck `running` rows — emergency reset:
+
+```sql
+UPDATE media_sync_queue
+SET status = 'pending', started_at = NULL
+WHERE status = 'running'
+  AND started_at < (NOW() - INTERVAL 30 MINUTE);
+```
+
+---
+
+## Project layout
+
+```text
 tmdb/
-├── api/                  # Core PHP REST API
-├── scripts/              # Sync scripts (run these)
-├── services/             # TMDB client & sync logic
-├── models/               # SQLAlchemy models
-├── repositories/         # DB upsert helpers
-├── utils/                # Checkpoints, rate limiter, provider config
-├── providers_config.json # Your streaming provider list
-├── .env                  # DB & TMDB credentials
-├── API.md
-├── APP_LAYOUT.md
-└── README.md
+  api/                 # PHP REST + admin sync + admin-sync.html
+  logos/               # Local provider logos
+  providers_config.json
+  README.md            # this file
+  *.postman_collection.json
 ```
+
+App remote config is **not** served here — Movflik uses **Firebase Remote Config**.
 
 ---
 
-## Useful commands
+## Go-live checklist
 
-```bash
-# List TMDB provider IDs for your config
-py scripts/list_providers.py
-
-# All-in-one movie sync (not recommended — use phased scripts)
-py scripts/sync_movies.py
-
-# Full sync (genres + movies + TV + people)
-py scripts/sync_all.py
-```
-
----
-
-## Tips
-
-- Use **forward slashes** in Git Bash: `py scripts/sync_movies_detail.py`
-- **Rate limit:** `RATE_LIMIT_SLEEP=0.25` = 4 req/sec **per key**. With `TMDB_API_KEYS` + `SYNC_WORKERS`, detail/seasons run ~N× faster.
-- **Check progress:** scripts log `API CALL ->` and `API OK <-` for every TMDB request
-- **Resume:** re-run the same script after interruption — checkpoint picks up where it left off
-- **API reads `.env`** from project root — same DB settings as Python sync
+- [ ] `media_sync_queue` table created  
+- [ ] `TMDB_API_KEYS` set  
+- [ ] `providers_config.json` on server  
+- [ ] `api/` deployed  
+- [ ] `POST /admin/sync/status` → `engine: php`, keys > 0  
+- [ ] Enqueue cron + process cron configured  
+- [ ] After first run, `pending` drops toward 0  
