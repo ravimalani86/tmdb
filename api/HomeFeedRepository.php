@@ -3,7 +3,7 @@
 declare(strict_types=1);
 
 /**
- * Metflix Home feed — bootstrap (first paint) + per-row APIs.
+ * Movflik Home feed — bootstrap (first paint) + per-row APIs.
  *
  * Perf:
  * - Bootstrap runs only trending + new_releases (+ my_list) — not every genre row.
@@ -285,22 +285,18 @@ final class HomeFeedRepository
             'on_netflix' => $this->baseMovieFilters([
                 'limit' => 12,
                 'provider_tmdb_ids' => [self::PROVIDER_NETFLIX],
-                'countries' => [$country],
             ]),
             'jiohotstar' => $this->baseMovieFilters([
                 'limit' => 12,
                 'provider_tmdb_ids' => [self::PROVIDER_JIOHOTSTAR],
-                'countries' => [$country],
             ]),
             'prime_video' => $this->baseMovieFilters([
                 'limit' => 12,
                 'provider_tmdb_ids' => [self::PROVIDER_PRIME],
-                'countries' => [$country],
             ]),
             'zee5' => $this->baseMovieFilters([
                 'limit' => 12,
                 'provider_tmdb_ids' => [self::PROVIDER_ZEE5],
-                'countries' => [$country],
             ]),
             'top_rated' => $this->baseMovieFilters([
                 'limit' => 12,
@@ -336,22 +332,18 @@ final class HomeFeedRepository
             'on_netflix' => $this->baseTvFilters([
                 'limit' => 12,
                 'provider_tmdb_ids' => [self::PROVIDER_NETFLIX],
-                'countries' => [$country],
             ]),
             'jiohotstar' => $this->baseTvFilters([
                 'limit' => 12,
                 'provider_tmdb_ids' => [self::PROVIDER_JIOHOTSTAR],
-                'countries' => [$country],
             ]),
             'prime_video' => $this->baseTvFilters([
                 'limit' => 12,
                 'provider_tmdb_ids' => [self::PROVIDER_PRIME],
-                'countries' => [$country],
             ]),
             'zee5' => $this->baseTvFilters([
                 'limit' => 12,
                 'provider_tmdb_ids' => [self::PROVIDER_ZEE5],
-                'countries' => [$country],
             ]),
             'top_rated' => $this->baseTvFilters([
                 'limit' => 12,
@@ -382,7 +374,7 @@ final class HomeFeedRepository
 
     private function cacheDir(): string
     {
-        $dir = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'metflix_home_feed';
+        $dir = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'movflik_home_feed';
         if (!is_dir($dir)) {
             @mkdir($dir, 0775, true);
         }

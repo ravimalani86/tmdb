@@ -88,9 +88,10 @@ final class SyncAdminRepository
 
     public function process(?int $payloadLimit = null, ?string $payloadMediaType = null): array
     {
-        @set_time_limit(300);
-        ignore_user_abort(true);
         $opts = $this->resolveProcessOptions($payloadLimit, $payloadMediaType);
+        $batchHolds = intdiv(max(0, $opts['limit'] - 1), 50);
+        @set_time_limit(300 + ($batchHolds * 30));
+        ignore_user_abort(true);
         $stats = $this->process->process($opts['limit'], $opts['media_type']);
         $stats['resolved_from'] = $opts['resolved_from'];
         return [
@@ -102,9 +103,10 @@ final class SyncAdminRepository
 
     public function run(?string $syncDay = null, ?int $payloadLimit = null, ?string $payloadMediaType = null): array
     {
-        @set_time_limit(900);
-        ignore_user_abort(true);
         $opts = $this->resolveProcessOptions($payloadLimit, $payloadMediaType);
+        $batchHolds = intdiv(max(0, $opts['limit'] - 1), 50);
+        @set_time_limit(900 + ($batchHolds * 30));
+        ignore_user_abort(true);
         $enq = $this->enqueue->enqueue($syncDay);
         $proc = $this->process->process($opts['limit'], $opts['media_type']);
         $proc['resolved_from'] = $opts['resolved_from'];

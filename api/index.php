@@ -92,6 +92,7 @@ try {
                 'POST /tv/{tmdb_id}/images',
                 'POST /tv/{tmdb_id}/keywords',
                 'POST /tv/{tmdb_id}/recommendations',
+                'POST /app/config',
                 'POST /home/bootstrap',
                 'POST /home/row',
                 'POST /home/feed',
@@ -185,14 +186,32 @@ try {
         json_error('Admin sync endpoint not found', 404);
     }
 
+    if ($path === '/app/config') {
+        $configPath = __DIR__ . DIRECTORY_SEPARATOR . 'movflik_remote_config.json';
+        if (!is_readable($configPath)) {
+            json_error('Remote config not found', 404);
+        }
+        $raw = file_get_contents($configPath);
+        if ($raw === false || trim($raw) === '') {
+            json_error('Remote config empty', 500);
+        }
+        $decoded = json_decode($raw, true);
+        if (!is_array($decoded)) {
+            json_error('Remote config invalid JSON', 500);
+        }
+        json_response($decoded);
+    }
+
     if ($path === '/home/bootstrap' || $path === '/home/row' || $path === '/home/feed') {
         $filterRaw = strtolower(trim((string) ($input['filter'] ?? 'all')));
         $allowed = ['all', 'movies', 'tv'];
         if (!in_array($filterRaw, $allowed, true)) {
             json_error('Invalid filter. Use all, movies, or tv', 400);
         }
-        $countries = query_countries($input, 'country') ?? ['IN'];
-        $country = strtoupper((string) ($countries[0] ?? 'IN'));
+        $countries = query_countries($input, 'country');
+        $country = ($countries !== null && $countries !== [])
+            ? strtoupper((string) $countries[0])
+            : 'ALL';
         $homeFeed = new HomeFeedRepository($movies, $tv, $genres, $userState);
         $deviceId = query_string($input, 'device_id');
 
