@@ -8,7 +8,7 @@ Local movie & TV catalog for **Movflik**. Data lives in MySQL; Flutter talks onl
 | Database | MySQL (`tmdbdata`) |
 | Sync | PHP admin endpoints + server cron |
 | Config | `.env` / `api/.env`, `providers_config.json` |
-| Ops UI | `api/admin-sync.html` |
+| Ops UI | `api/admin-sync.html`, `api/admin-apps.html` |
 
 ---
 
@@ -84,7 +84,25 @@ CREATE TABLE IF NOT EXISTS media_sync_queue (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 ```
 
-### 4. Smoke test
+### 4. App JSON table (once)
+
+Auto-created on first admin/apps or `/app-config` call. Optional SQL:
+
+```sql
+CREATE TABLE IF NOT EXISTS app_configs (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  app_id VARCHAR(64) NOT NULL,
+  app_name VARCHAR(120) NOT NULL,
+  package_name VARCHAR(191) NOT NULL,
+  config_json LONGTEXT NOT NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE KEY uq_app_configs_app_id (app_id),
+  UNIQUE KEY uq_app_configs_package (package_name)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+```
+
+### 5. Smoke test
 
 ```bash
 curl -sS -X POST "http://localhost/tmdb/api/" \
@@ -295,6 +313,25 @@ Optional `media_type`: `movie` \| `tv`
 
 ---
 
+### App config (per-app JSON)
+
+Returns **only** the JSON saved for that `app_id` (no wrapper). Unknown id → 404.
+
+| Endpoint | Body | Notes |
+|----------|------|--------|
+| `POST /app-config` | `app_id` | Flutter / public (`API_KEY`) |
+
+```bash
+curl -sS -X POST "BASE/app-config" \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: YOUR_KEY" \
+  -d '{"app_id":"movflik"}'
+```
+
+Empty store returns `{}`.
+
+---
+
 ## Admin sync API
 
 Base path: `/admin/sync/*`  
@@ -427,7 +464,35 @@ Browser UIs (same admin API key):
 | UI | URL |
 |----|-----|
 | Sync queue | Local: `http://localhost/tmdb/api/admin-sync.html` · Live: `https://app.myappworld.in/tmdb/api/admin-sync.html` |
+| App JSON | Local: `http://localhost/tmdb/api/admin-apps.html` · Live: `https://app.myappworld.in/tmdb/api/admin-apps.html` |
 | Movflik Remote Config | Local: `http://localhost/tmdb/api/admin-remote-config.html` · Live: `https://app.myappworld.in/tmdb/api/admin-remote-config.html` |
+
+### App JSON admin (MySQL)
+
+Create/edit apps (`app_name`, `app_id`, `package_name`, JSON). Flutter reads via `POST /app-config`. Separate from Firebase Remote Config.
+
+**Admin API** (`ADMIN_API_KEY`)
+
+| Endpoint | Body | Purpose |
+|----------|------|---------|
+| `POST /admin/apps/list` | `{}` | All apps |
+| `POST /admin/apps/get` | `{"app_id":"movflik"}` | One app |
+| `POST /admin/apps/create` | `app_name`, `app_id`, `package_name`, `config` or `raw` | Create |
+| `POST /admin/apps/update` | same; lookup by `app_id` | Edit (`app_id` not changed) |
+
+```bash
+# List
+curl -sS -X POST "http://localhost/tmdb/api/admin/apps/list" \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: tmdb_flutter_secret_123" \
+  -d '{}'
+
+# Create
+curl -sS -X POST "http://localhost/tmdb/api/admin/apps/create" \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: tmdb_flutter_secret_123" \
+  -d '{"app_name":"Movflik","app_id":"movflik","package_name":"com.company.movflik","config":{"ads":true}}'
+```
 
 ### Firebase Remote Config admin (Movflik JSON)
 
@@ -495,20 +560,21 @@ WHERE status = 'running'
 
 ```text
 tmdb/
-  api/                 # PHP REST + admin sync + admin-sync.html
+  api/                 # PHP REST + admin UIs
   logos/               # Local provider logos
   providers_config.json
   README.md            # this file
   *.postman_collection.json
 ```
 
-App remote config is **not** served here — Movflik uses **Firebase Remote Config**.
+Per-app JSON is stored in MySQL (`app_configs`) and served by `POST /app-config`. Movflik can still use **Firebase Remote Config** separately.
 
 ---
 
 ## Go-live checklist
 
 - [ ] `media_sync_queue` table created  
+- [ ] `app_configs` table created (or first `/admin/apps` call)  
 - [ ] `TMDB_API_KEYS` set  
 - [ ] `providers_config.json` on server  
 - [ ] `api/` deployed  

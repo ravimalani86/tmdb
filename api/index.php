@@ -19,6 +19,7 @@ require __DIR__ . '/SyncMediaWriter.php';
 require __DIR__ . '/SyncEnqueueService.php';
 require __DIR__ . '/SyncProcessService.php';
 require __DIR__ . '/SyncAdminRepository.php';
+require __DIR__ . '/AppConfigRepository.php';
 // FirebaseRemoteConfigAdmin loaded only for /admin/remote-config/* routes.
 
 // Return JSON on unexpected fatals (empty HTML 500 is hard to debug on live).
@@ -150,7 +151,7 @@ try {
     if ($path === '/' || $path === '') {
         json_response([
             'name' => 'TMDB Local API',
-            'version' => '1.7',
+            'version' => '1.8',
             'endpoints' => [
                 'POST /movies',
                 'POST /movies/{tmdb_id}',
@@ -181,6 +182,11 @@ try {
                 'POST /user-state/watch',
                 'POST /user-state/save-for-later',
                 'POST /user-state/list',
+                'POST /app-config',
+                'POST /admin/apps/list',
+                'POST /admin/apps/get',
+                'POST /admin/apps/create',
+                'POST /admin/apps/update',
                 'POST /admin/sync/status',
                 'POST /admin/sync/queue-overview',
                 'POST /admin/sync/config',
@@ -296,6 +302,76 @@ try {
         }
 
         json_error('Admin sync endpoint not found', 404);
+    }
+
+    // --- Admin multi-app JSON store ---
+    if (str_starts_with($path, '/admin/apps')) {
+        $adminKey = (string) ($config['admin_api_key'] ?? '');
+        if ($adminKey === '' || !hash_equals($adminKey, $providedApiKey)) {
+            json_error('Unauthorized (admin)', 401);
+        }
+        $appConfigs = new AppConfigRepository($pdo);
+
+        if ($path === '/admin/apps/list') {
+            json_response(['data' => $appConfigs->listApps()]);
+        }
+
+        if ($path === '/admin/apps/get') {
+            $appId = require_body_string($input, 'app_id');
+            try {
+                $row = $appConfigs->getByAppId($appId);
+            } catch (InvalidArgumentException $e) {
+                json_error($e->getMessage(), 400);
+            }
+            if ($row === null) {
+                json_error('App not found', 404);
+            }
+            json_response($row);
+        }
+
+        if ($path === '/admin/apps/create') {
+            $configPayload = $input['config'] ?? $input['raw'] ?? '{}';
+            try {
+                $created = $appConfigs->create(
+                    require_body_string($input, 'app_name'),
+                    require_body_string($input, 'app_id'),
+                    require_body_string($input, 'package_name'),
+                    $configPayload
+                );
+                json_response(['action' => 'created', 'app' => $created]);
+            } catch (InvalidArgumentException $e) {
+                json_error($e->getMessage(), 400);
+            } catch (Throwable $e) {
+                error_log('admin apps create: ' . $e->getMessage());
+                json_error('Create failed: ' . $e->getMessage(), 500);
+            }
+        }
+
+        if ($path === '/admin/apps/update') {
+            $configPayload = $input['config'] ?? $input['raw'] ?? '{}';
+            try {
+                $updated = $appConfigs->update(
+                    require_body_string($input, 'app_id'),
+                    require_body_string($input, 'app_name'),
+                    require_body_string($input, 'package_name'),
+                    $configPayload
+                );
+                json_response(['action' => 'updated', 'app' => $updated]);
+            } catch (InvalidArgumentException $e) {
+                json_error($e->getMessage(), 400);
+            } catch (RuntimeException $e) {
+                if ($e->getMessage() === 'App not found') {
+                    json_error('App not found', 404);
+                }
+                error_log('admin apps update: ' . $e->getMessage());
+                json_error('Update failed: ' . $e->getMessage(), 500);
+            } catch (Throwable $e) {
+                error_log('admin apps update: ' . $e->getMessage());
+                json_error('Update failed: ' . $e->getMessage(), 500);
+            }
+        }
+
+        json_error('Admin apps endpoint not found', 404);
     }
 
     if ($path === '/home/bootstrap' || $path === '/home/row' || $path === '/home/feed') {
@@ -463,6 +539,19 @@ try {
             query_int($input, 'page', 1),
             query_int($input, 'limit', 20, 1, 50)
         ));
+    }
+
+    if ($path === '/app-config') {
+        $appId = require_body_string($input, 'app_id');
+        try {
+            $json = (new AppConfigRepository($pdo))->fetchPublicJson($appId);
+        } catch (InvalidArgumentException $e) {
+            json_error($e->getMessage(), 400);
+        }
+        if ($json === null) {
+            json_error('App not found', 404);
+        }
+        json_raw_response($json);
     }
 
     if (preg_match('#^/movies/(\d+)$#', $path, $m)) {

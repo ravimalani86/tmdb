@@ -1,0 +1,390 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>App JSON Admin</title>
+  <style>
+    :root {
+      --bg: #0f1419;
+      --panel: #1a222c;
+      --border: #2c3845;
+      --text: #e8eef4;
+      --muted: #8b9aab;
+      --accent: #3d9cf0;
+      --ok: #3dba7a;
+      --warn: #e0a44a;
+      --bad: #e05a5a;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Segoe UI", system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.45;
+    }
+    .wrap { max-width: 1100px; margin: 0 auto; padding: 24px 16px 48px; }
+    h1 { font-size: 1.35rem; margin: 0 0 4px; font-weight: 650; }
+    .sub { color: var(--muted); font-size: 0.9rem; margin-bottom: 20px; }
+    .sub a { color: var(--accent); }
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 16px 18px;
+      margin-bottom: 16px;
+    }
+    .panel h2 {
+      margin: 0 0 12px;
+      font-size: 0.95rem;
+      font-weight: 600;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+    .row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+    .fields { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; margin-bottom: 12px; }
+    @media (max-width: 800px) { .fields { grid-template-columns: 1fr; } }
+    .field { display: flex; flex-direction: column; gap: 4px; }
+    label { font-size: 0.9rem; color: var(--muted); }
+    input[type="text"], input[type="password"] {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      color: var(--text);
+      border-radius: 6px;
+      padding: 8px 10px;
+      font-size: 0.95rem;
+      min-width: 0;
+      width: 100%;
+    }
+    input[type="password"], #apiBase { flex: 1; min-width: 180px; }
+    input:disabled { opacity: 0.65; cursor: not-allowed; }
+    button {
+      background: var(--accent);
+      color: #fff;
+      border: 0;
+      border-radius: 6px;
+      padding: 8px 14px;
+      font-size: 0.9rem;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
+    button.secondary { background: #2c3845; }
+    .hint { color: var(--muted); font-size: 0.82rem; margin: 0 0 12px; }
+    .msg { margin-top: 10px; font-size: 0.9rem; white-space: pre-wrap; }
+    .msg.ok { color: var(--ok); }
+    .msg.err { color: var(--bad); }
+    .msg.warn { color: var(--warn); }
+    .meta { color: var(--muted); font-size: 0.8rem; margin-top: 8px; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.95rem; }
+    th, td { text-align: left; padding: 8px 6px; border-bottom: 1px solid var(--border); vertical-align: top; }
+    th { color: var(--muted); font-weight: 560; font-size: 0.8rem; }
+    td code { font-size: 0.85rem; }
+    .muted { color: var(--muted); font-size: 0.82rem; }
+    textarea {
+      width: 100%;
+      min-height: 360px;
+      background: #0b1015;
+      border: 1px solid var(--border);
+      color: var(--text);
+      border-radius: 8px;
+      padding: 12px;
+      font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
+      font-size: 0.82rem;
+      line-height: 1.45;
+      resize: vertical;
+    }
+    .hidden { display: none; }
+    .head-row { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; }
+    .head-row h2 { margin: 0; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>App JSON Admin</h1>
+    <p class="sub">
+      Create and edit per-app JSON. Flutter fetches with <code>POST /app-config</code>.
+      <pre>
+        curl -sS -X POST "http://localhost/tmdb/api/app-config" \
+          -H "Content-Type: application/json" \
+          -H "X-API-Key: YOUR_KEY" \
+          -d '{"app_id":"movflik"}'
+      </pre>
+    </p>
+
+    <div class="panel">
+      <h2>Connection</h2>
+      <div class="row">
+        <label for="apiBase">API base</label>
+        <input id="apiBase" type="text" placeholder="https://app.myappworld.in/tmdb/api" />
+      </div>
+      <div class="row" style="margin-top:10px">
+        <label for="apiKey">X-API-Key</label>
+        <input id="apiKey" type="password" placeholder="Admin / API key" autocomplete="off" />
+        <button type="button" class="secondary" id="btnSaveConn">Save</button>
+        <button type="button" class="secondary" id="btnLoad">Load apps</button>
+      </div>
+      <div class="msg" id="connMsg"></div>
+    </div>
+
+    <div class="panel">
+      <div class="head-row">
+        <h2>Apps</h2>
+        <button type="button" id="btnNew">Create app</button>
+      </div>
+      <p class="hint">Click Edit to change name, package, or JSON. <code>app_id</code> cannot be changed after create.</p>
+      <table>
+        <thead>
+          <tr>
+            <th>Name</th>
+            <th>App ID</th>
+            <th>Package</th>
+            <th>Updated</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="appsBody">
+          <tr><td colspan="5" class="muted">Load apps to see the list.</td></tr>
+        </tbody>
+      </table>
+      <div class="msg" id="listMsg"></div>
+    </div>
+
+    <div class="panel hidden" id="formPanel">
+      <h2 id="formTitle">Create app</h2>
+      <div class="fields">
+        <div class="field">
+          <label for="appName">App name</label>
+          <input id="appName" type="text" maxlength="120" placeholder="Movflik" />
+        </div>
+        <div class="field">
+          <label for="appId">App ID</label>
+          <input id="appId" type="text" maxlength="64" placeholder="movflik" />
+        </div>
+        <div class="field">
+          <label for="packageName">Package name</label>
+          <input id="packageName" type="text" maxlength="191" placeholder="com.company.movflik" />
+        </div>
+      </div>
+      <p class="hint">JSON is returned as-is by <code>POST /app-config</code> with this app_id. Root must be an object or array.</p>
+      <div class="row" style="margin-bottom:10px">
+        <button type="button" id="btnSaveApp">Save</button>
+        <button type="button" class="secondary" id="btnFormat">Format JSON</button>
+        <button type="button" class="secondary" id="btnValidate">Validate</button>
+        <button type="button" class="secondary" id="btnCancel">Cancel</button>
+      </div>
+      <textarea id="editor" spellcheck="false" placeholder='{ "example": true }'></textarea>
+      <div class="msg" id="editMsg"></div>
+      <div class="meta" id="editMeta"></div>
+    </div>
+  </div>
+
+  <script>
+    const LS_BASE = 'tmdb_apps_admin_base';
+    const LS_KEY = 'tmdb_apps_admin_key';
+
+    const apiBaseEl = document.getElementById('apiBase');
+    const apiKeyEl = document.getElementById('apiKey');
+    const connMsg = document.getElementById('connMsg');
+    const listMsg = document.getElementById('listMsg');
+    const appsBody = document.getElementById('appsBody');
+    const formPanel = document.getElementById('formPanel');
+    const formTitle = document.getElementById('formTitle');
+    const appNameEl = document.getElementById('appName');
+    const appIdEl = document.getElementById('appId');
+    const packageNameEl = document.getElementById('packageName');
+    const editor = document.getElementById('editor');
+    const editMsg = document.getElementById('editMsg');
+    const editMeta = document.getElementById('editMeta');
+
+    let editing = false;
+
+    apiBaseEl.value = localStorage.getItem(LS_BASE) || defaultBase();
+    apiKeyEl.value = localStorage.getItem(LS_KEY) || '';
+
+    function defaultBase() {
+      const path = location.pathname.replace(/\/[^/]*$/, '');
+      return location.origin + path;
+    }
+
+    function setMsg(el, text, kind) {
+      el.textContent = text || '';
+      el.className = 'msg' + (kind ? ' ' + kind : '');
+    }
+
+    function baseUrl() {
+      return (apiBaseEl.value || '').replace(/\/+$/, '');
+    }
+
+    function escapeHtml(value) {
+      return String(value == null ? '' : value)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+    }
+
+    async function api(path, body) {
+      const res = await fetch(baseUrl() + path, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-API-Key': apiKeyEl.value || '',
+        },
+        body: JSON.stringify(body || {}),
+      });
+      const text = await res.text();
+      let data;
+      try { data = JSON.parse(text); } catch (_) {
+        const snippet = (text || '').replace(/\s+/g, ' ').slice(0, 280);
+        throw new Error(
+          'Non-JSON response HTTP ' + res.status +
+          (snippet ? (': ' + snippet) : ' (empty body)')
+        );
+      }
+      if (!res.ok) {
+        throw new Error((data && data.error) || ('HTTP ' + res.status));
+      }
+      return data;
+    }
+
+    function parseEditorJson() {
+      const raw = editor.value.trim() === '' ? '{}' : editor.value;
+      const obj = JSON.parse(raw);
+      if (obj === null || typeof obj !== 'object') {
+        throw new Error('Root must be a JSON object or array');
+      }
+      return { obj, raw };
+    }
+
+    function showForm(mode, app) {
+      editing = mode === 'edit';
+      formTitle.textContent = editing ? 'Edit app' : 'Create app';
+      appNameEl.value = app ? (app.app_name || '') : '';
+      appIdEl.value = app ? (app.app_id || '') : '';
+      appIdEl.disabled = editing;
+      packageNameEl.value = app ? (app.package_name || '') : '';
+      if (app && app.raw) {
+        try {
+          editor.value = JSON.stringify(JSON.parse(app.raw), null, 2);
+        } catch (_) {
+          editor.value = app.raw;
+        }
+      } else {
+        editor.value = '{\n  \n}';
+      }
+      editMeta.textContent = app && app.updated_at
+        ? 'updated_at=' + app.updated_at
+        : '';
+      setMsg(editMsg, '');
+      formPanel.classList.remove('hidden');
+      formPanel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+
+    function hideForm() {
+      formPanel.classList.add('hidden');
+      editing = false;
+      appIdEl.disabled = false;
+    }
+
+    async function loadApps() {
+      setMsg(listMsg, 'Loading…');
+      try {
+        const data = await api('/admin/apps/list', {});
+        const rows = data.data || [];
+        if (rows.length === 0) {
+          appsBody.innerHTML = '<tr><td colspan="5" class="muted">No apps yet. Click Create app.</td></tr>';
+        } else {
+          appsBody.innerHTML = rows.map(function (row) {
+            return '<tr>' +
+              '<td>' + escapeHtml(row.app_name) + '</td>' +
+              '<td><code>' + escapeHtml(row.app_id) + '</code></td>' +
+              '<td><code>' + escapeHtml(row.package_name) + '</code></td>' +
+              '<td class="muted">' + escapeHtml(row.updated_at || '') + '</td>' +
+              '<td><button type="button" class="secondary btn-edit" data-id="' +
+                escapeHtml(row.app_id) + '">Edit</button></td>' +
+              '</tr>';
+          }).join('');
+          appsBody.querySelectorAll('.btn-edit').forEach(function (btn) {
+            btn.onclick = function () {
+              const found = rows.find(function (r) { return r.app_id === btn.getAttribute('data-id'); });
+              if (found) showForm('edit', found);
+            };
+          });
+        }
+        setMsg(listMsg, rows.length + ' app' + (rows.length === 1 ? '' : 's') + '.', 'ok');
+        setMsg(connMsg, 'Connected.', 'ok');
+      } catch (e) {
+        setMsg(listMsg, e.message || String(e), 'err');
+        setMsg(connMsg, e.message || String(e), 'err');
+      }
+    }
+
+    document.getElementById('btnSaveConn').onclick = function () {
+      localStorage.setItem(LS_BASE, apiBaseEl.value.trim());
+      localStorage.setItem(LS_KEY, apiKeyEl.value);
+      setMsg(connMsg, 'Saved in this browser.', 'ok');
+    };
+
+    document.getElementById('btnLoad').onclick = loadApps;
+    document.getElementById('btnNew').onclick = function () { showForm('create', null); };
+    document.getElementById('btnCancel').onclick = hideForm;
+
+    document.getElementById('btnFormat').onclick = function () {
+      try {
+        const parsed = parseEditorJson();
+        editor.value = JSON.stringify(parsed.obj, null, 2);
+        setMsg(editMsg, 'Formatted.', 'ok');
+      } catch (e) {
+        setMsg(editMsg, 'Invalid JSON: ' + e.message, 'err');
+      }
+    };
+
+    document.getElementById('btnValidate').onclick = function () {
+      try {
+        parseEditorJson();
+        setMsg(editMsg, 'Valid JSON.', 'ok');
+      } catch (e) {
+        setMsg(editMsg, 'Invalid JSON: ' + e.message, 'err');
+      }
+    };
+
+    document.getElementById('btnSaveApp').onclick = async function () {
+      let parsed;
+      try {
+        parsed = parseEditorJson();
+      } catch (e) {
+        setMsg(editMsg, 'Fix JSON before save: ' + e.message, 'err');
+        return;
+      }
+      const payload = {
+        app_name: appNameEl.value.trim(),
+        app_id: appIdEl.value.trim(),
+        package_name: packageNameEl.value.trim(),
+        raw: JSON.stringify(parsed.obj),
+      };
+      setMsg(editMsg, 'Saving…');
+      try {
+        const path = editing ? '/admin/apps/update' : '/admin/apps/create';
+        const data = await api(path, payload);
+        setMsg(editMsg, (data.action === 'created' ? 'Created.' : 'Updated.'), 'ok');
+        if (data.app && data.app.updated_at) {
+          editMeta.textContent = 'updated_at=' + data.app.updated_at;
+        }
+        if (!editing && data.app) {
+          showForm('edit', data.app);
+        }
+        await loadApps();
+      } catch (e) {
+        setMsg(editMsg, e.message || String(e), 'err');
+      }
+    };
+
+    if (apiKeyEl.value) {
+      loadApps();
+    }
+  </script>
+</body>
+</html>

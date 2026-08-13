@@ -15,6 +15,15 @@ function json_error(string $message, int $status = 400): void
     json_response(['error' => $message], $status);
 }
 
+/** Echo a pre-encoded JSON string without wrapping or re-encoding. */
+function json_raw_response(string $json, int $status = 200): void
+{
+    http_response_code($status);
+    header('Content-Type: application/json; charset=utf-8');
+    echo $json === '' ? '{}' : $json;
+    exit;
+}
+
 function tmdb_image(?string $path, string $size = 'w500'): ?string
 {
     global $config;
