@@ -346,4 +346,132 @@ final class SyncAdminRepository
     {
         return (new DateTime('now', new DateTimeZone('Asia/Kolkata')))->format('Y-m-d');
     }
+
+    /**
+     * Light TMDB GET + MySQL exists check (no extras).
+     *
+     * @return array{
+     *   media_type: string,
+     *   tmdb_id: int,
+     *   synced: bool,
+     *   preview: array<string, mixed>
+     * }
+     */
+    public function lookupItem(string $mediaType, int $tmdbId): array
+    {
+        $mediaType = $this->requireMediaType($mediaType);
+        $tmdbId = $this->requireTmdbId($tmdbId);
+
+        $path = match ($mediaType) {
+            'movie' => "movie/{$tmdbId}",
+            'tv' => "tv/{$tmdbId}",
+            'person' => "person/{$tmdbId}",
+        };
+        $detail = $this->tmdb->get($path);
+        if ($detail === null) {
+            throw new RuntimeException(ucfirst($mediaType) . ' not found');
+        }
+
+        return [
+            'media_type' => $mediaType,
+            'tmdb_id' => $tmdbId,
+            'synced' => $this->isSynced($mediaType, $tmdbId),
+            'preview' => $this->buildPreview($mediaType, $detail),
+        ];
+    }
+
+    /**
+     * Full upsert of one movie / TV / person. Does not enqueue related people.
+     *
+     * @return array{action: string, media_type: string, tmdb_id: int, synced: true}
+     */
+    public function syncItem(string $mediaType, int $tmdbId): array
+    {
+        $mediaType = $this->requireMediaType($mediaType);
+        $tmdbId = $this->requireTmdbId($tmdbId);
+
+        @set_time_limit($mediaType === 'tv' ? 600 : 180);
+        ignore_user_abort(true);
+
+        $action = match ($mediaType) {
+            'movie' => $this->writer->syncMovie($this->tmdb, $tmdbId),
+            'tv' => $this->writer->syncTv($this->tmdb, $tmdbId),
+            'person' => $this->writer->syncPerson($this->tmdb, $tmdbId),
+        };
+
+        return [
+            'action' => $action,
+            'media_type' => $mediaType,
+            'tmdb_id' => $tmdbId,
+            'synced' => true,
+        ];
+    }
+
+    /** @return 'movie'|'tv'|'person' */
+    private function requireMediaType(string $mediaType): string
+    {
+        $mediaType = strtolower(trim($mediaType));
+        if (!in_array($mediaType, ['movie', 'tv', 'person'], true)) {
+            throw new InvalidArgumentException('media_type must be movie, tv, or person');
+        }
+        return $mediaType;
+    }
+
+    private function requireTmdbId(int $tmdbId): int
+    {
+        if ($tmdbId <= 0) {
+            throw new InvalidArgumentException('tmdb_id must be a positive integer');
+        }
+        return $tmdbId;
+    }
+
+    private function isSynced(string $mediaType, int $tmdbId): bool
+    {
+        return match ($mediaType) {
+            'movie' => $this->writer->movieLocalId($tmdbId) !== null,
+            'tv' => $this->writer->tvLocalId($tmdbId) !== null,
+            'person' => $this->writer->personLocalId($tmdbId) !== null,
+            default => false,
+        };
+    }
+
+    /**
+     * @param array<string, mixed> $detail
+     * @return array<string, mixed>
+     */
+    private function buildPreview(string $mediaType, array $detail): array
+    {
+        if ($mediaType === 'person') {
+            return [
+                'name' => (string) ($detail['name'] ?? ''),
+                'date' => $detail['birthday'] ?? null,
+                'known_for_department' => $detail['known_for_department'] ?? null,
+                'popularity' => isset($detail['popularity']) ? (float) $detail['popularity'] : null,
+                'original_language' => null,
+                'vote_average' => null,
+                'image_url' => tmdb_image(
+                    isset($detail['profile_path']) ? (string) $detail['profile_path'] : null,
+                    'w185'
+                ),
+            ];
+        }
+
+        $name = $mediaType === 'tv'
+            ? (string) ($detail['name'] ?? '')
+            : (string) ($detail['title'] ?? '');
+        $date = $mediaType === 'tv'
+            ? ($detail['first_air_date'] ?? null)
+            : ($detail['release_date'] ?? null);
+
+        return [
+            'name' => $name,
+            'date' => $date,
+            'original_language' => $detail['original_language'] ?? null,
+            'vote_average' => isset($detail['vote_average']) ? (float) $detail['vote_average'] : null,
+            'image_url' => tmdb_image(
+                isset($detail['poster_path']) ? (string) $detail['poster_path'] : null,
+                'w185'
+            ),
+        ];
+    }
 }

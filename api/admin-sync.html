@@ -90,6 +90,44 @@
       color: var(--muted);
     }
     .pill.live { color: var(--ok); }
+    .pill.ok { color: var(--ok); }
+    .pill.bad { color: var(--bad); }
+    .lookup-preview {
+      display: none;
+      margin-top: 14px;
+      padding-top: 14px;
+      border-top: 1px solid var(--border);
+    }
+    .lookup-preview.show { display: block; }
+    .lookup-card {
+      display: flex;
+      gap: 14px;
+      align-items: flex-start;
+    }
+    .lookup-card img {
+      width: 92px;
+      height: 138px;
+      object-fit: cover;
+      border-radius: 6px;
+      background: #0b1015;
+      flex-shrink: 0;
+    }
+    .lookup-card .ph {
+      width: 92px;
+      height: 138px;
+      border-radius: 6px;
+      background: #0b1015;
+      color: var(--muted);
+      font-size: 0.75rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+    .lookup-dl { margin: 8px 0 0; }
+    .lookup-dl div { font-size: 0.9rem; }
+    .lookup-dl span { color: var(--muted); }
+    #lookupName { font-size: 1.05rem; font-weight: 650; margin: 6px 0 0; }
   </style>
 </head>
 <body>
@@ -180,6 +218,40 @@
       </div>
       <div class="msg" id="configMsg"></div>
       <div class="meta" id="configMeta"></div>
+    </div>
+
+    <div class="panel">
+      <h2>Lookup &amp; sync</h2>
+      <p class="hint">Find one TMDB id, see if it is already in MySQL, then insert or full-update it.</p>
+      <div style="margin-top:4px">
+        <label>media_type</label>
+        <div class="radios">
+          <label><input type="radio" name="lookupMediaType" value="movie" checked /> movie</label>
+          <label><input type="radio" name="lookupMediaType" value="tv" /> tv</label>
+          <label><input type="radio" name="lookupMediaType" value="person" /> person</label>
+        </div>
+      </div>
+      <div class="row">
+        <label for="lookupTmdbId">tmdb_id</label>
+        <input id="lookupTmdbId" type="number" min="1" placeholder="12345" />
+        <button type="button" id="btnLookupFind">Find</button>
+      </div>
+      <div class="msg" id="lookupMsg"></div>
+      <div class="lookup-preview" id="lookupPreview">
+        <div class="lookup-card">
+          <img id="lookupImg" alt="" hidden />
+          <div class="ph" id="lookupImgPh">No image</div>
+          <div>
+            <span class="pill" id="lookupSyncedPill">—</span>
+            <div id="lookupName"></div>
+            <div class="lookup-dl" id="lookupDetails"></div>
+          </div>
+        </div>
+        <div class="row" style="margin-top:14px">
+          <button type="button" id="btnLookupSync">Sync update</button>
+        </div>
+        <div class="meta" id="lookupMeta"></div>
+      </div>
     </div>
   </div>
 
@@ -344,10 +416,134 @@
       }
     }
 
+    function selectedLookupType() {
+      const el = document.querySelector('input[name="lookupMediaType"]:checked');
+      return el ? el.value : 'movie';
+    }
+
+    function lookupId() {
+      return parseInt($('lookupTmdbId').value, 10);
+    }
+
+    function hideLookupPreview() {
+      $('lookupPreview').classList.remove('show');
+    }
+
+    function showLookupPreview(data) {
+      const p = data.preview || {};
+      $('lookupName').textContent = p.name || '(untitled)';
+      const pill = $('lookupSyncedPill');
+      if (data.synced) {
+        pill.textContent = 'synced';
+        pill.className = 'pill ok';
+      } else {
+        pill.textContent = 'not synced';
+        pill.className = 'pill bad';
+      }
+
+      const img = $('lookupImg');
+      const ph = $('lookupImgPh');
+      if (p.image_url) {
+        img.src = p.image_url;
+        img.alt = p.name || '';
+        img.hidden = false;
+        ph.style.display = 'none';
+      } else {
+        img.removeAttribute('src');
+        img.hidden = true;
+        ph.style.display = 'flex';
+      }
+
+      const lines = [];
+      if (data.media_type === 'person') {
+        if (p.known_for_department) lines.push(['department', p.known_for_department]);
+        if (p.date) lines.push(['birthday', p.date]);
+        if (p.popularity != null) lines.push(['popularity', p.popularity]);
+      } else {
+        if (p.date) lines.push([data.media_type === 'tv' ? 'first_air_date' : 'release_date', p.date]);
+        if (p.original_language) lines.push(['original_language', p.original_language]);
+        if (p.vote_average != null) lines.push(['vote_average', p.vote_average]);
+      }
+      lines.push(['tmdb_id', data.tmdb_id]);
+      $('lookupDetails').innerHTML = lines.map(function (row) {
+        return '<div><span>' + row[0] + ':</span> ' + row[1] + '</div>';
+      }).join('');
+      $('lookupPreview').classList.add('show');
+    }
+
+    async function lookupFind() {
+      const tmdbId = lookupId();
+      if (!tmdbId || tmdbId < 1) {
+        $('lookupMsg').className = 'msg err';
+        $('lookupMsg').textContent = 'Enter a positive tmdb_id';
+        hideLookupPreview();
+        return;
+      }
+      try {
+        $('lookupMsg').className = 'msg';
+        $('lookupMsg').textContent = 'Looking up…';
+        hideLookupPreview();
+        const data = await api('/admin/sync/lookup', {
+          media_type: selectedLookupType(),
+          tmdb_id: tmdbId,
+        });
+        showLookupPreview(data);
+        $('lookupMsg').className = 'msg ok';
+        $('lookupMsg').textContent = 'Found on TMDB.';
+        $('lookupMeta').textContent = '';
+      } catch (e) {
+        hideLookupPreview();
+        $('lookupMsg').className = 'msg err';
+        $('lookupMsg').textContent = e.message;
+      }
+    }
+
+    async function lookupSync() {
+      const tmdbId = lookupId();
+      const mediaType = selectedLookupType();
+      if (!tmdbId || tmdbId < 1) {
+        $('lookupMsg').className = 'msg err';
+        $('lookupMsg').textContent = 'Enter a positive tmdb_id';
+        return;
+      }
+      try {
+        $('lookupMsg').className = 'msg';
+        $('lookupMsg').textContent = 'Syncing… (TV with many seasons can take a while)';
+        const data = await api('/admin/sync/item', {
+          media_type: mediaType,
+          tmdb_id: tmdbId,
+        });
+        $('lookupMsg').className = 'msg ok';
+        $('lookupMsg').textContent = 'Sync ' + (data.action || 'done') +
+          ': ' + (data.media_type || mediaType) + ' ' + (data.tmdb_id || tmdbId);
+        try {
+          const fresh = await api('/admin/sync/lookup', {
+            media_type: mediaType,
+            tmdb_id: tmdbId,
+          });
+          showLookupPreview(fresh);
+        } catch (_) {
+          const pill = $('lookupSyncedPill');
+          pill.textContent = 'synced';
+          pill.className = 'pill ok';
+        }
+        $('lookupMeta').textContent = 'action=' + (data.action || '');
+        refreshOverview();
+      } catch (e) {
+        $('lookupMsg').className = 'msg err';
+        $('lookupMsg').textContent = e.message;
+      }
+    }
+
     $('btnSaveConn').addEventListener('click', saveConn);
     $('btnSaveConfig').addEventListener('click', saveConfig);
     $('btnLoadConfig').addEventListener('click', loadConfig);
     $('btnRunProcess').addEventListener('click', runProcessOnce);
+    $('btnLookupFind').addEventListener('click', lookupFind);
+    $('btnLookupSync').addEventListener('click', lookupSync);
+    $('lookupTmdbId').addEventListener('keydown', function (e) {
+      if (e.key === 'Enter') lookupFind();
+    });
 
     loadConn();
     if ($('apiKey').value.trim()) {

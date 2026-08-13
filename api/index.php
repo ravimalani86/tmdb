@@ -194,6 +194,8 @@ try {
                 'POST /admin/sync/enqueue',
                 'POST /admin/sync/process',
                 'POST /admin/sync/run',
+                'POST /admin/sync/lookup',
+                'POST /admin/sync/item',
                 'POST /admin/remote-config/status',
                 'POST /admin/remote-config/get',
                 'POST /admin/remote-config/save',
@@ -298,6 +300,31 @@ try {
             } catch (Throwable $e) {
                 error_log('admin sync run: ' . $e->getMessage());
                 json_error('Run failed: ' . $e->getMessage(), 500);
+            }
+        }
+
+        if ($path === '/admin/sync/lookup' || $path === '/admin/sync/item') {
+            if ($mediaType === null) {
+                json_error('media_type must be movie, tv, or person', 400);
+            }
+            $tmdbId = require_body_int($input, 'tmdb_id');
+            try {
+                if ($path === '/admin/sync/lookup') {
+                    json_response($syncAdmin->lookupItem($mediaType, $tmdbId));
+                }
+                json_response($syncAdmin->syncItem($mediaType, $tmdbId));
+            } catch (InvalidArgumentException $e) {
+                json_error($e->getMessage(), 400);
+            } catch (RuntimeException $e) {
+                $msg = $e->getMessage();
+                if (str_contains($msg, 'not found')) {
+                    json_error($msg, 404);
+                }
+                error_log('admin sync item: ' . $msg);
+                json_error(($path === '/admin/sync/lookup' ? 'Lookup' : 'Sync') . ' failed: ' . $msg, 500);
+            } catch (Throwable $e) {
+                error_log('admin sync item: ' . $e->getMessage());
+                json_error(($path === '/admin/sync/lookup' ? 'Lookup' : 'Sync') . ' failed: ' . $e->getMessage(), 500);
             }
         }
 

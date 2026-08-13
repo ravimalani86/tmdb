@@ -346,10 +346,13 @@ Auth: `X-API-Key` must match `ADMIN_API_KEY` (or `API_KEY`).
 | `POST /admin/sync/enqueue` | `{}` or `{"day":"YYYY-MM-DD"}` | Fill today’s queue |
 | `POST /admin/sync/process` | `{"limit":5,"media_type":"tv"?}` | Process N items (1–450) |
 | `POST /admin/sync/run` | `{"limit":5,"day"?,"media_type"?}` | Enqueue + first process batch |
+| `POST /admin/sync/lookup` | `{"media_type":"movie","tmdb_id":12345}` | TMDB preview + MySQL synced? |
+| `POST /admin/sync/item` | `{"media_type":"movie","tmdb_id":12345}` | Insert or full-update one item |
 
 **Sync day** = IST calendar “today” unless `day` override.  
 **Queue sources:** TMDB movie/tv/person changes ∩ DB + discover from `providers_config.json` + related people after media sync.  
-**Process:** full upsert (credits, videos, images, keywords, similar, recommendations, providers; TV = seasons).
+**Process:** full upsert (credits, videos, images, keywords, similar, recommendations, providers; TV = seasons).  
+**Lookup / item:** admin UI block on `admin-sync.html` — Find one id on TMDB, show synced vs not synced, then insert or full-update that row only (no related-people enqueue).
 
 ### Real examples (local)
 
@@ -383,6 +386,18 @@ curl -sS -X POST "http://localhost/tmdb/api/admin/sync/config/save" \
   -H "Content-Type: application/json" \
   -H "X-API-Key: tmdb_flutter_secret_123" \
   -d '{"limit":5}'
+
+# Lookup one TMDB id (preview + synced flag)
+curl -sS -X POST "http://localhost/tmdb/api/admin/sync/lookup" \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: tmdb_flutter_secret_123" \
+  -d '{"media_type":"movie","tmdb_id":19995}'
+
+# Insert or full-update that item
+curl -sS -X POST "http://localhost/tmdb/api/admin/sync/item" \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: tmdb_flutter_secret_123" \
+  -d '{"media_type":"movie","tmdb_id":19995}'
 ```
 
 ### Real examples (live)
