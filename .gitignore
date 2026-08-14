@@ -1,16 +1,8 @@
 /.env
 /.venv
-/API.md
-/APP_LAYOUT.md
-/info.txt
-/run.txt
-/TMDB_LOCAL_DB_SYNC.md
 /__pycache__
 /exports
 /db_export/*.sql
 /api/.env
 /api/firebase-service-account.json
 **/firebase-service-account*.json
-# Local deploy packs
-_deploy_api_v15/
-_deploy_api_v15.tar.gz

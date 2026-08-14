@@ -49,8 +49,7 @@ function api_resolve_path(string $raw, string $defaultRelativeToProject): string
 }
 
 $envPaths = [
-    dirname(__DIR__) . DIRECTORY_SEPARATOR . '.env',  // project root (local)
-    __DIR__ . DIRECTORY_SEPARATOR . '.env',           // api/.env (server)
+    __DIR__ . DIRECTORY_SEPARATOR . '.env',
 ];
 $env = [];
 foreach ($envPaths as $envPath) {
@@ -78,7 +77,7 @@ return [
         'pass' => $env['DB_PASSWORD'] ?? '',
         'charset' => 'utf8mb4',
     ],
-    // Simple API security for Flutter clients (set this in api/.env on server).
+    // Simple API security for Flutter clients (set this in api/.env).
     'api_key' => $env['API_KEY'] ?? '',
     // Admin sync endpoints (defaults to API_KEY if unset).
     'admin_api_key' => $env['ADMIN_API_KEY'] ?? ($env['API_KEY'] ?? ''),

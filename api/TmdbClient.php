@@ -32,7 +32,7 @@ final class TmdbClient
         }
         $this->apiKeys = array_values(array_filter(array_map('strval', $keys)));
         if ($this->apiKeys === []) {
-            throw new RuntimeException('No TMDB_API_KEY / TMDB_API_KEYS configured in .env');
+            throw new RuntimeException('No TMDB_API_KEY / TMDB_API_KEYS configured in api/.env');
         }
     }
 

@@ -7,8 +7,8 @@ Local movie & TV catalog for **Movflik**. Data lives in MySQL; Flutter talks onl
 | API | Core PHP (PDO) |
 | Database | MySQL (`tmdbdata`) |
 | Sync | PHP admin endpoints + server cron |
-| Config | `.env` / `api/.env`, `providers_config.json` |
-| Ops UI | `api/admin-sync.html`, `api/admin-apps.html` |
+| Config | `api/.env`, `providers_config.json` |
+| Ops UI | `api/admin-sync.html`, `api/admin-apps.html`, `api/admin-remote-config.html` |
 
 ---
 
@@ -30,7 +30,7 @@ Admin sync also accepts `ADMIN_API_KEY` (defaults to `API_KEY`).
 
 ### 1. Env
 
-Create project root `.env` and/or `api/.env`:
+Create **`api/.env`** (this is the only env file the PHP API reads):
 
 ```env
 DB_HOST=localhost
@@ -38,27 +38,31 @@ DB_PORT=3306
 DB_USER=root
 DB_PASSWORD=
 DB_NAME=tmdbdata
+PUBLIC_BASE_URL=http://localhost/tmdb
 
+API_CORS_ORIGIN=*
 API_KEY=tmdb_flutter_secret_123
 # Optional separate admin key (defaults to API_KEY)
 # ADMIN_API_KEY=your_admin_secret
 
 TMDB_API_KEY=your_primary_tmdb_key
 TMDB_API_KEYS=key1,key2,key3,key4,key5,key6
+RATE_LIMIT_SLEEP=0.2
 
-# Optional
-# RATE_LIMIT_SLEEP=0.2
-# SYNC_PROVIDERS_FILE=providers_config.json
-# WITH_WATCH_MONETIZATION_TYPES=flatrate
-# PUBLIC_BASE_URL=https://app.myappworld.in/tmdb
-# API_CORS_ORIGIN=*
+# Optional Firebase Remote Config admin
+# FIREBASE_PROJECT_ID=movflik
+# FIREBASE_REMOTE_CONFIG_KEY=movflik_config
+# FIREBASE_SERVICE_ACCOUNT_PATH=firebase-service-account.json
 ```
+
+Do **not** put a `.env` in the project root — it is ignored. Live and local both use `api/.env`.
 
 ### 2. Files on server
 
-- Entire `api/` folder (PHP + `.htaccess`)
+- Entire `api/` folder (PHP + `.htaccess` + `api/.env`)
 - Root `providers_config.json`
 - `logos/` (provider PNGs)
+- `privacy-policy.html` (Play Store / public page)
 
 ### 3. Queue table (once)
 
@@ -138,13 +142,16 @@ curl -sS -X POST "BASE/" \
 
 | Endpoint | Body fields | Notes |
 |----------|-------------|--------|
-| `POST /home/bootstrap` | `filter`, `country`, `device_id?` | Fast first paint |
-| `POST /home/row` | `filter`, `row`, `country`, `device_id?` | One row |
-| `POST /home/feed` | `filter`, `country`, `device_id?` | Full feed |
+| `POST /home/bootstrap` | `filter`, `country`, `device_id?` | Fast first paint: `hero` + bootstrap `rows` + `genres` + `secondary_rows` list |
+| `POST /home/row` | `filter`, `row`, `country`, `device_id?` | One row → `{ filter, country, row, data }` |
+| `POST /home/feed` | `filter`, `country`, `device_id?` | Legacy full feed (prefer bootstrap + row) |
 
 `filter`: `all` \| `movies` \| `tv`  
-`country`: e.g. `IN` (default `ALL` if omitted)  
-`row` examples: `trending_movies`, `trending_tv`, `top_10`, `my_list`, `hindi`, `tamil`, `action`, `on_netflix`, `jiohotstar`, `prime_video`, `zee5`, `top_rated`, …
+`country`: `"IN"` or `["IN"]` (default `ALL` if omitted)  
+`device_id` optional; needed for `my_list` / user flags.
+
+**Bootstrap `rows`:** `trending_movies`, `trending_tv`, `top_10`, `new_releases`, `my_list`  
+**`/home/row` keys:** those plus `hindi`, `tamil`, `telugu`, `malayalam`, `action`, `thriller`, `crime`, `drama`, `comedy`, `romance`, `horror`, `animation`, `scifi`, `on_netflix`, `jiohotstar`, `prime_video`, `zee5`, `top_rated`
 
 ```bash
 # Bootstrap
@@ -182,13 +189,13 @@ curl -sS -X POST "BASE/home/row" \
 |-------|---------|--------|
 | `page` | `1` | |
 | `limit` | `20` | 1–50 |
-| `sort` | `popularity` | also date / vote fields (see API) |
+| `sort` | `popularity` | `vote_average` \| `release_date` \| `title` |
 | `order` | `desc` | `asc` \| `desc` |
 | `search` | `"avatar"` | |
 | `genre_id` | `28` or `[28,35]` | |
-| `provider_id` | `8` | Netflix = 8 |
+| `provider_id` | `8` or `[8,9]` | Netflix = 8 |
 | `country` | `"IN"` or `["IN"]` | |
-| `original_language` | `"hi"` | |
+| `original_language` | `"hi"` | also `"hi\|en"` or `["hi","en"]` |
 | `spoken_language` | `"hi"` | |
 | `vote_average_gte` | `7` | |
 | `vote_count_gte` | `100` | |
@@ -236,7 +243,7 @@ curl -sS -X POST "BASE/movies/19995/videos" \
 
 | Endpoint | Body |
 |----------|------|
-| `POST /tv` | Same style filters as movies (`first_air_date_*` instead of `release_date_*`) |
+| `POST /tv` | Same filters as movies; `sort` = `popularity` \| `vote_average` \| `first_air_date` \| `name`; dates = `first_air_date_gte` / `first_air_date_lte` |
 | `POST /tv/{tmdb_id}` | `device_id?` |
 | `POST /tv/{tmdb_id}/credits` | `{}` |
 | `POST /tv/{tmdb_id}/providers` | `{}` |
@@ -264,8 +271,14 @@ curl -sS -X POST "BASE/tv/1396/season/1/episode/1" \
 
 ### People / genres / providers
 
+| Endpoint | Body |
+|----------|------|
+| `POST /people/{tmdb_id}` | `{}` — profile + movie/TV filmography |
+| `POST /genres` | `type`: `movie` \| `tv` (default `movie`) |
+| `POST /providers` | `type`: `movie` \| `tv`; `country`: `"IN"` or `["IN","US"]` |
+
 ```bash
-# Person detail
+# Person detail (e.g. 287 = Brad Pitt)
 curl -sS -X POST "BASE/people/287" \
   -H "Content-Type: application/json" \
   -H "X-API-Key: YOUR_KEY" \
@@ -281,7 +294,7 @@ curl -sS -X POST "BASE/genres" \
 curl -sS -X POST "BASE/providers" \
   -H "Content-Type: application/json" \
   -H "X-API-Key: YOUR_KEY" \
-  -d '{"type":"movie","country":"IN"}'
+  -d '{"type":"movie","country":["IN","US"]}'
 ```
 
 ---
@@ -349,9 +362,11 @@ Auth: `X-API-Key` must match `ADMIN_API_KEY` (or `API_KEY`).
 | `POST /admin/sync/lookup` | `{"media_type":"movie","tmdb_id":12345}` | TMDB preview + MySQL synced? |
 | `POST /admin/sync/item` | `{"media_type":"movie","tmdb_id":12345}` | Insert or full-update one item |
 
-**Sync day** = IST calendar “today” unless `day` override.  
+**Test order:** status → enqueue → process (repeat until `pending=0`) → status again.  
+**Sync day** = IST calendar “today” unless `day` override (empty `day` = today).  
 **Queue sources:** TMDB movie/tv/person changes ∩ DB + discover from `providers_config.json` + related people after media sync.  
-**Process:** full upsert (credits, videos, images, keywords, similar, recommendations, providers; TV = seasons).  
+**Enqueue** can take 1–3 minutes. After movie/TV sync, related people may be enqueued.  
+**Process:** full upsert (credits, videos, images, keywords, similar, recommendations, providers; TV = seasons). `limit` is 1–450.  
 **Lookup / item:** admin UI block on `admin-sync.html` — Find one id on TMDB, show synced vs not synced, then insert or full-update that row only (no related-people enqueue).
 
 ### Real examples (local)
@@ -524,7 +539,7 @@ Publishes parameter `movflik_config` so the Flutter app refreshes without a stor
 FIREBASE_PROJECT_ID=movflik
 FIREBASE_REMOTE_CONFIG_KEY=movflik_config
 # Optional if not using default path api/firebase-service-account.json
-# FIREBASE_SERVICE_ACCOUNT_PATH=api/firebase-service-account.json
+# FIREBASE_SERVICE_ACCOUNT_PATH=firebase-service-account.json
 ```
 
 **Admin API**
@@ -549,11 +564,6 @@ curl -sS -X POST "http://localhost/tmdb/api/admin/remote-config/get" \
   -d '{}'
 ```
 
-Postman collections (optional):
-
-- `TMDB_Local_API.postman_collection.json`
-- `TMDB_Daily_Sync_Cron.postman_collection.json`
-
 ---
 
 ## Failure / retry
@@ -575,11 +585,11 @@ WHERE status = 'running'
 
 ```text
 tmdb/
-  api/                 # PHP REST + admin UIs
-  logos/               # Local provider logos
-  providers_config.json
-  README.md            # this file
-  *.postman_collection.json
+  api/                      # PHP REST, admin UIs, api/.env
+  logos/                    # Local provider logos
+  providers_config.json     # Discover sync provider list
+  privacy-policy.html
+  README.md
 ```
 
 Per-app JSON is stored in MySQL (`app_configs`) and served by `POST /app-config`. Movflik can still use **Firebase Remote Config** separately.
@@ -588,9 +598,9 @@ Per-app JSON is stored in MySQL (`app_configs`) and served by `POST /app-config`
 
 ## Go-live checklist
 
+- [ ] `api/.env` on server (DB, `API_KEY`, `TMDB_API_KEYS`)  
 - [ ] `media_sync_queue` table created  
 - [ ] `app_configs` table created (or first `/admin/apps` call)  
-- [ ] `TMDB_API_KEYS` set  
 - [ ] `providers_config.json` on server  
 - [ ] `api/` deployed  
 - [ ] `POST /admin/sync/status` → `engine: php`, keys > 0  
