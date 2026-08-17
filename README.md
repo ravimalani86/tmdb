@@ -150,8 +150,23 @@ curl -sS -X POST "BASE/" \
 `country`: `"IN"` or `["IN"]` (default `ALL` if omitted)  
 `device_id` optional; needed for `my_list` / user flags.
 
-**Bootstrap `rows`:** `trending_movies`, `trending_tv`, `top_10`, `new_releases`, `my_list`  
-**`/home/row` keys:** those plus `hindi`, `tamil`, `telugu`, `malayalam`, `action`, `thriller`, `crime`, `drama`, `comedy`, `romance`, `horror`, `animation`, `scifi`, `on_netflix`, `jiohotstar`, `prime_video`, `zee5`, `top_rated`
+**Bootstrap `rows`:** `home_slider`, `trending_movies`, `trending_tv`, `top_10`, `new_releases`, `my_list`
+**`/home/row` keys:** those plus `profile_slider`, `home_slider_anime`, `recently_added`, `international_films`, `this_month`, `top_20_series`, `hindi`, `tamil`, `telugu`, `malayalam`, `action`, `thriller`, `crime`, `drama`, `comedy`, `romance`, `horror`, `animation`, `scifi`, `on_netflix`, `jiohotstar`, `prime_video`, `zee5`, `top_rated`
+
+Slider rows use strict rolling windows and return at most five available titles without widening the window:
+
+- `profile_slider`: movies + TV first aired/released in the last 30 days, popularity descending, poster required.
+- `home_slider`: last 30 days, vote count at least 20, popularity descending, backdrop preferred. Respects `all`, `movies`, and `tv`.
+- `home_slider_anime`: same as `home_slider`, restricted to Animation genre (TMDB genre 16).
+
+For TV, “released” means the show’s `first_air_date`; a new season or episode of an older show does not qualify.
+
+Editorial rows:
+
+- `recently_added`: movies + TV released in the last 30 days, newest release date first.
+- `international_films`: English, Korean, Japanese, Spanish, and French movies ordered by popularity.
+- `this_month`: current-calendar-month movies + TV with at least 20 votes, ordered by popularity.
+- `top_20_series`: 20 currently popular TV series.
 
 ```bash
 # Bootstrap

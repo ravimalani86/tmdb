@@ -33,6 +33,7 @@ final class HomeFeedRepository
 
     /** Rows returned by /home/bootstrap (first viewport). */
     public const BOOTSTRAP_ROW_KEYS = [
+        'home_slider',
         'trending_movies',
         'trending_tv',
         'top_10',
@@ -42,6 +43,10 @@ final class HomeFeedRepository
 
     /** Catalog rows loaded lazily via /home/row. */
     public const SECONDARY_ROW_KEYS = [
+        'recently_added',
+        'international_films',
+        'this_month',
+        'top_20_series',
         'hindi',
         'tamil',
         'telugu',
@@ -60,6 +65,12 @@ final class HomeFeedRepository
         'prime_video',
         'zee5',
         'top_rated',
+    ];
+
+    /** Slider-only rows available through /home/row. */
+    private const SLIDER_ROW_KEYS = [
+        'profile_slider',
+        'home_slider_anime',
     ];
 
     public function __construct(
@@ -87,6 +98,7 @@ final class HomeFeedRepository
         $trendingTv = $wantTv
             ? $this->cachedRow($filter, $country, 'trending_tv')
             : [];
+        $homeSlider = $this->cachedRow($filter, $country, 'home_slider');
         $newReleases = $this->cachedRow($filter, $country, 'new_releases');
         $top10 = $this->buildTop10($filter, $trendingMovies, $trendingTv);
 
@@ -101,6 +113,7 @@ final class HomeFeedRepository
         }
 
         $rows = [
+            'home_slider' => $homeSlider,
             'trending_movies' => $trendingMovies,
             'trending_tv' => $trendingTv,
             'top_10' => $top10,
@@ -133,7 +146,11 @@ final class HomeFeedRepository
         string $country = 'IN'
     ): array {
         $rowKey = strtolower(trim($rowKey));
-        $allowed = array_merge(self::BOOTSTRAP_ROW_KEYS, self::SECONDARY_ROW_KEYS);
+        $allowed = array_merge(
+            self::BOOTSTRAP_ROW_KEYS,
+            self::SECONDARY_ROW_KEYS,
+            self::SLIDER_ROW_KEYS
+        );
         if (!in_array($rowKey, $allowed, true)) {
             throw new InvalidArgumentException(
                 'Invalid row. Use one of: ' . implode(', ', $allowed)
@@ -228,6 +245,49 @@ final class HomeFeedRepository
         $recent = (new DateTimeImmutable('first day of -6 months'))->format('Y-m-d');
 
         try {
+            if ($rowKey === 'profile_slider') {
+                return $this->fetchRecentSlider($filter, 30, true);
+            }
+            if ($rowKey === 'home_slider') {
+                return $this->fetchRecentSlider($filter, 30, false);
+            }
+            if ($rowKey === 'home_slider_anime') {
+                return $this->fetchRecentSlider('all', 30, false, true);
+            }
+            if ($rowKey === 'recently_added') {
+                return $this->fetchMixedReleaseRow(
+                    $filter,
+                    (new DateTimeImmutable('-30 days'))->format('Y-m-d'),
+                    12,
+                    true
+                );
+            }
+            if ($rowKey === 'international_films') {
+                if ($filter === 'tv') {
+                    return [];
+                }
+                return $this->movies->listMovies($this->baseMovieFilters([
+                    'limit' => 12,
+                    'original_languages' => ['en', 'ko', 'ja', 'es', 'fr'],
+                ]))['data'] ?? [];
+            }
+            if ($rowKey === 'this_month') {
+                return $this->fetchMixedReleaseRow(
+                    $filter,
+                    (new DateTimeImmutable('first day of this month'))->format('Y-m-d'),
+                    12,
+                    false,
+                    20
+                );
+            }
+            if ($rowKey === 'top_20_series') {
+                if ($filter === 'movies') {
+                    return [];
+                }
+                return $this->tv->listShows($this->baseTvFilters([
+                    'limit' => 20,
+                ]))['data'] ?? [];
+            }
             if ($rowKey === 'trending_movies') {
                 if (!$wantMovies) {
                     return [];
@@ -261,6 +321,168 @@ final class HomeFeedRepository
         } catch (Throwable $e) {
             return [];
         }
+    }
+
+    /**
+     * Build a mixed movie/TV slider from a strict rolling release window.
+     *
+     * Profile gate: popularity ordered, portrait poster required.
+     * Home: popularity ordered, with a vote floor and backdrop preference.
+     *
+     * @return list<array<string, mixed>>
+     */
+    private function fetchRecentSlider(
+        string $filter,
+        int $days,
+        bool $profileGate,
+        bool $animeOnly = false
+    ): array {
+        $since = (new DateTimeImmutable("-{$days} days"))->format('Y-m-d');
+        $today = (new DateTimeImmutable('today'))->format('Y-m-d');
+        $wantMovies = $filter !== 'tv';
+        $wantTv = $filter !== 'movies';
+        $genreIds = $animeOnly ? [self::G_ANIMATION] : null;
+        $sort = 'popularity';
+        $voteFloor = $profileGate ? null : 20;
+        $candidateLimit = 20;
+
+        $movies = [];
+        if ($wantMovies) {
+            $movies = $this->movies->listMovies($this->baseMovieFilters([
+                'limit' => $candidateLimit,
+                'sort' => $sort,
+                'genre_tmdb_ids' => $genreIds,
+                'vote_count_gte' => $voteFloor,
+                'release_date_gte' => $since,
+                'release_date_lte' => $today,
+            ]))['data'] ?? [];
+        }
+
+        $shows = [];
+        if ($wantTv) {
+            $shows = $this->tv->listShows($this->baseTvFilters([
+                'limit' => $candidateLimit,
+                'sort' => $sort,
+                'genre_tmdb_ids' => $genreIds,
+                'vote_count_gte' => $voteFloor,
+                'first_air_date_gte' => $since,
+                'first_air_date_lte' => $today,
+            ]))['data'] ?? [];
+        }
+
+        $items = array_merge($movies, $shows);
+        usort($items, static function (array $a, array $b): int {
+            $popularity = ((float) ($b['popularity'] ?? 0))
+                <=> ((float) ($a['popularity'] ?? 0));
+            if ($popularity !== 0) {
+                return $popularity;
+            }
+            return ((int) ($b['tmdb_id'] ?? 0)) <=> ((int) ($a['tmdb_id'] ?? 0));
+        });
+
+        $seen = [];
+        $withPreferredArt = [];
+        $withFallbackArt = [];
+        foreach ($items as $item) {
+            $key = ($item['media_type'] ?? '') . ':' . ($item['tmdb_id'] ?? '');
+            if ($key === ':' || isset($seen[$key])) {
+                continue;
+            }
+            $seen[$key] = true;
+
+            if ($profileGate) {
+                if (!empty($item['poster_url'])) {
+                    $withPreferredArt[] = $item;
+                }
+                continue;
+            }
+
+            if (!empty($item['backdrop_url'])) {
+                $withPreferredArt[] = $item;
+            } elseif (!empty($item['poster_url'])) {
+                $withFallbackArt[] = $item;
+            }
+        }
+
+        return array_slice(
+            array_merge($withPreferredArt, $withFallbackArt),
+            0,
+            5
+        );
+    }
+
+    /**
+     * Build a mixed movie/TV release row with one global ordering.
+     *
+     * @return list<array<string, mixed>>
+     */
+    private function fetchMixedReleaseRow(
+        string $filter,
+        string $since,
+        int $limit,
+        bool $sortByDate,
+        ?int $voteCountGte = null
+    ): array {
+        $today = (new DateTimeImmutable('today'))->format('Y-m-d');
+        $wantMovies = $filter === 'all' || $filter === 'movies';
+        $wantTv = $filter === 'all' || $filter === 'tv';
+        $candidateLimit = max($limit, 20);
+
+        $movies = [];
+        if ($wantMovies) {
+            $movies = $this->movies->listMovies($this->baseMovieFilters([
+                'limit' => $candidateLimit,
+                'sort' => $sortByDate ? 'release_date' : 'popularity',
+                'vote_count_gte' => $voteCountGte,
+                'release_date_gte' => $since,
+                'release_date_lte' => $today,
+            ]))['data'] ?? [];
+        }
+
+        $shows = [];
+        if ($wantTv) {
+            $shows = $this->tv->listShows($this->baseTvFilters([
+                'limit' => $candidateLimit,
+                'sort' => $sortByDate ? 'first_air_date' : 'popularity',
+                'vote_count_gte' => $voteCountGte,
+                'first_air_date_gte' => $since,
+                'first_air_date_lte' => $today,
+            ]))['data'] ?? [];
+        }
+
+        $items = array_merge($movies, $shows);
+        usort($items, static function (array $a, array $b) use ($sortByDate): int {
+            if ($sortByDate) {
+                $aDate = (string) ($a['release_date'] ?? $a['first_air_date'] ?? '');
+                $bDate = (string) ($b['release_date'] ?? $b['first_air_date'] ?? '');
+                $dateOrder = strcmp($bDate, $aDate);
+                if ($dateOrder !== 0) {
+                    return $dateOrder;
+                }
+            }
+
+            $popularity = ((float) ($b['popularity'] ?? 0))
+                <=> ((float) ($a['popularity'] ?? 0));
+            if ($popularity !== 0) {
+                return $popularity;
+            }
+            return ((int) ($b['tmdb_id'] ?? 0)) <=> ((int) ($a['tmdb_id'] ?? 0));
+        });
+
+        $seen = [];
+        $out = [];
+        foreach ($items as $item) {
+            $key = ($item['media_type'] ?? '') . ':' . ($item['tmdb_id'] ?? '');
+            if ($key === ':' || isset($seen[$key])) {
+                continue;
+            }
+            $seen[$key] = true;
+            $out[] = $item;
+            if (count($out) >= $limit) {
+                break;
+            }
+        }
+        return $out;
     }
 
     /**
@@ -460,9 +682,18 @@ final class HomeFeedRepository
         $pool = [];
         $seen = [];
         $sources = match ($filter) {
-            'movies' => array_merge($rows['top_10'] ?? [], $rows['trending_movies'] ?? []),
-            'tv' => array_merge($rows['top_10'] ?? [], $rows['trending_tv'] ?? []),
+            'movies' => array_merge(
+                $rows['home_slider'] ?? [],
+                $rows['top_10'] ?? [],
+                $rows['trending_movies'] ?? []
+            ),
+            'tv' => array_merge(
+                $rows['home_slider'] ?? [],
+                $rows['top_10'] ?? [],
+                $rows['trending_tv'] ?? []
+            ),
             default => array_merge(
+                $rows['home_slider'] ?? [],
                 $rows['top_10'] ?? [],
                 $rows['trending_movies'] ?? [],
                 $rows['trending_tv'] ?? []
