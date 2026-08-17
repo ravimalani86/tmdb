@@ -77,6 +77,17 @@ function query_int(array $source, string $key, int $default, int $min = 1, int $
     return max($min, min($max, $value));
 }
 
+/** @return list<string> */
+function allowed_sync_sources(): array
+{
+    return ['changes', 'discover', 'credits', 'backfill'];
+}
+
+function is_allowed_sync_source(string $source): bool
+{
+    return in_array(strtolower($source), allowed_sync_sources(), true);
+}
+
 function query_string(array $source, string $key): ?string
 {
     if (!isset($source[$key])) {

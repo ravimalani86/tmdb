@@ -233,8 +233,8 @@ final class SyncAdminRepository
             if ($source === '' || $source === 'all') {
                 $source = null;
             }
-            if ($source !== null && !in_array($source, ['changes', 'discover', 'credits'], true)) {
-                throw new InvalidArgumentException('source must be changes, discover, credits, or empty');
+            if ($source !== null && !is_allowed_sync_source($source)) {
+                throw new InvalidArgumentException('source must be changes, discover, credits, backfill, or empty');
             }
         }
 
@@ -301,7 +301,7 @@ final class SyncAdminRepository
             $from['source'] = 'payload';
         }
 
-        if ($source !== null && !in_array($source, ['changes', 'discover', 'credits'], true)) {
+        if ($source !== null && !is_allowed_sync_source($source)) {
             $source = null;
             $from['source'] = 'default';
         }
@@ -347,6 +347,23 @@ final class SyncAdminRepository
         return (new DateTime('now', new DateTimeZone('Asia/Kolkata')))->format('Y-m-d');
     }
 
+    public function tvGaps(): array
+    {
+        return $this->enqueue->tvSeasonGaps();
+    }
+
+    public function enqueueTvGaps(?string $syncDay = null, ?int $limit = null): array
+    {
+        @set_time_limit(120);
+        ignore_user_abort(true);
+        $stats = $this->enqueue->enqueueIncompleteTv($syncDay, $limit);
+        return [
+            'action' => 'enqueue_tv_gaps',
+            'enqueue' => $stats,
+            'status' => $this->status($stats['sync_day'] ?? $syncDay),
+        ];
+    }
+
     /**
      * Light TMDB GET + MySQL exists check (no extras).
      *
@@ -372,12 +389,17 @@ final class SyncAdminRepository
             throw new RuntimeException(ucfirst($mediaType) . ' not found');
         }
 
-        return [
+        $synced = $this->isSynced($mediaType, $tmdbId);
+        $out = [
             'media_type' => $mediaType,
             'tmdb_id' => $tmdbId,
-            'synced' => $this->isSynced($mediaType, $tmdbId),
+            'synced' => $synced,
             'preview' => $this->buildPreview($mediaType, $detail),
         ];
+        if ($mediaType === 'tv' && $synced) {
+            $out['local'] = $this->tvLocalSeasonStats($tmdbId);
+        }
+        return $out;
     }
 
     /**
@@ -423,6 +445,41 @@ final class SyncAdminRepository
             throw new InvalidArgumentException('tmdb_id must be a positive integer');
         }
         return $tmdbId;
+    }
+
+    /** @return array<string, int|null> */
+    private function tvLocalSeasonStats(int $tmdbId): array
+    {
+        $stmt = $this->db->prepare(
+            "SELECT t.number_of_seasons, t.number_of_episodes,
+                    COALESCE(s.season_cnt, 0) AS seasons_in_db,
+                    COALESCE(s.regular_seasons, 0) AS regular_seasons_in_db,
+                    COALESCE(e.ep_cnt, 0) AS episodes_in_db
+             FROM tv_shows t
+             LEFT JOIN (
+               SELECT tv_show_id,
+                      COUNT(*) AS season_cnt,
+                      SUM(CASE WHEN season_number > 0 THEN 1 ELSE 0 END) AS regular_seasons
+               FROM tv_seasons GROUP BY tv_show_id
+             ) s ON s.tv_show_id = t.id
+             LEFT JOIN (
+               SELECT tv_show_id, COUNT(*) AS ep_cnt FROM tv_episodes GROUP BY tv_show_id
+             ) e ON e.tv_show_id = t.id
+             WHERE t.tmdb_id = ?
+             LIMIT 1"
+        );
+        $stmt->execute([$tmdbId]);
+        $row = $stmt->fetch();
+        if ($row === false) {
+            return [];
+        }
+        return [
+            'number_of_seasons' => $row['number_of_seasons'] !== null ? (int) $row['number_of_seasons'] : null,
+            'number_of_episodes' => $row['number_of_episodes'] !== null ? (int) $row['number_of_episodes'] : null,
+            'seasons_in_db' => (int) $row['seasons_in_db'],
+            'regular_seasons_in_db' => (int) $row['regular_seasons_in_db'],
+            'episodes_in_db' => (int) $row['episodes_in_db'],
+        ];
     }
 
     private function isSynced(string $mediaType, int $tmdbId): bool

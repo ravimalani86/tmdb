@@ -192,6 +192,8 @@ try {
                 'POST /admin/sync/config',
                 'POST /admin/sync/config/save',
                 'POST /admin/sync/enqueue',
+                'POST /admin/sync/enqueue-tv-gaps',
+                'POST /admin/sync/tv-gaps',
                 'POST /admin/sync/process',
                 'POST /admin/sync/run',
                 'POST /admin/sync/lookup',
@@ -221,8 +223,8 @@ try {
             $mediaType = strtolower($mediaType);
         }
         $source = query_string($input, 'source');
-        if ($source !== null && !in_array(strtolower($source), ['changes', 'discover', 'credits'], true)) {
-            json_error('source must be changes, discover, or credits', 400);
+        if ($source !== null && !is_allowed_sync_source($source)) {
+            json_error('source must be changes, discover, credits, or backfill', 400);
         }
         if ($source !== null) {
             $source = strtolower($source);
@@ -261,8 +263,8 @@ try {
                 : '';
             if ($saveSource === '' || strtolower($saveSource) === 'all') {
                 $saveSource = null;
-            } elseif (!in_array(strtolower($saveSource), ['changes', 'discover', 'credits'], true)) {
-                json_error('source must be changes, discover, credits, or empty', 400);
+            } elseif (!is_allowed_sync_source($saveSource)) {
+                json_error('source must be changes, discover, credits, backfill, or empty', 400);
             } else {
                 $saveSource = strtolower($saveSource);
             }
@@ -282,6 +284,27 @@ try {
             } catch (Throwable $e) {
                 error_log('admin sync enqueue: ' . $e->getMessage());
                 json_error('Enqueue failed: ' . $e->getMessage(), 500);
+            }
+        }
+
+        if ($path === '/admin/sync/tv-gaps') {
+            try {
+                json_response($syncAdmin->tvGaps());
+            } catch (Throwable $e) {
+                error_log('admin sync tv-gaps: ' . $e->getMessage());
+                json_error('TV gaps failed: ' . $e->getMessage(), 500);
+            }
+        }
+
+        if ($path === '/admin/sync/enqueue-tv-gaps') {
+            $gapLimit = array_key_exists('limit', $input)
+                ? query_int($input, 'limit', 1, 1, 20000)
+                : null;
+            try {
+                json_response($syncAdmin->enqueueTvGaps($day, $gapLimit));
+            } catch (Throwable $e) {
+                error_log('admin sync enqueue-tv-gaps: ' . $e->getMessage());
+                json_error('Enqueue TV gaps failed: ' . $e->getMessage(), 500);
             }
         }
 

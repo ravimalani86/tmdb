@@ -187,6 +187,31 @@
     </div>
 
     <div class="panel">
+      <h2>TV season / episode gaps</h2>
+      <p class="hint">
+        Incomplete shows (no seasons, or fewer seasons/episodes than TMDB declared).
+        Enqueue uses source <strong>backfill</strong>, popularity first.
+        Drain with process <strong>tv + backfill</strong> and limit 3–5, or the browser runner
+        <a href="sync-tv-backfill.php" style="color:var(--accent)">sync-tv-backfill.php</a>
+        (same pattern as person credits).
+      </p>
+      <table>
+        <thead><tr><th>metric</th><th style="text-align:right">cnt</th></tr></thead>
+        <tbody id="tvGapsBody">
+          <tr><td colspan="2" style="color:var(--muted)">Waiting…</td></tr>
+        </tbody>
+      </table>
+      <div class="row" style="margin-top:12px">
+        <label for="tvGapsLimit">enqueue limit (blank = all)</label>
+        <input id="tvGapsLimit" type="number" min="1" max="20000" placeholder="all" />
+        <button type="button" class="secondary" id="btnTvGapsRefresh">Refresh</button>
+        <button type="button" id="btnTvGapsEnqueue">Enqueue incomplete TV</button>
+      </div>
+      <div class="msg" id="tvGapsMsg"></div>
+      <div class="meta" id="tvGapsMeta"></div>
+    </div>
+
+    <div class="panel">
       <h2>Process cron config</h2>
       <p class="hint">Priority: <strong>admin config</strong> → payload → default. <strong>All</strong> = empty (no filter).</p>
       <div class="row">
@@ -209,6 +234,7 @@
           <label><input type="radio" name="source" value="changes" /> changes</label>
           <label><input type="radio" name="source" value="discover" /> discover</label>
           <label><input type="radio" name="source" value="credits" /> credits</label>
+          <label><input type="radio" name="source" value="backfill" /> backfill</label>
         </div>
       </div>
       <div class="row">
@@ -277,6 +303,7 @@
       $('connMsg').className = 'msg ok';
       $('connMsg').textContent = 'Connection saved locally.';
       refreshOverview();
+      refreshTvGaps();
       loadConfig();
     }
 
@@ -327,6 +354,65 @@
         $('pendingBody').innerHTML = '<tr><td colspan="2" style="color:var(--bad)">' + e.message + '</td></tr>';
         $('sourceBody').innerHTML = '<tr><td colspan="2" style="color:var(--bad)">' + e.message + '</td></tr>';
         $('statusBody').innerHTML = '<tr><td colspan="2" style="color:var(--bad)">' + e.message + '</td></tr>';
+      }
+    }
+
+    const TV_GAP_KEYS = [
+      ['tv_shows', 'active TV shows'],
+      ['unique_incomplete', 'unique incomplete'],
+      ['zero_seasons', 'zero seasons'],
+      ['seasons_but_zero_episodes', 'seasons but 0 episodes'],
+      ['fewer_seasons_than_declared', 'fewer seasons than declared'],
+      ['fewer_episodes_than_declared', 'fewer episodes than declared'],
+    ];
+
+    function fillTvGaps(gaps) {
+      const tbody = $('tvGapsBody');
+      tbody.innerHTML = TV_GAP_KEYS.map(function (row) {
+        const val = gaps && gaps[row[0]] != null ? gaps[row[0]] : 0;
+        const strong = row[0] === 'unique_incomplete' ? ' style="color:var(--warn)"' : '';
+        return '<tr><td>' + row[1] + '</td><td class="num"' + strong + '>' + val + '</td></tr>';
+      }).join('');
+    }
+
+    async function refreshTvGaps() {
+      try {
+        const data = await api('/admin/sync/tv-gaps', {});
+        fillTvGaps(data);
+        $('tvGapsMeta').textContent = 'updated ' + new Date().toLocaleTimeString();
+      } catch (e) {
+        $('tvGapsBody').innerHTML = '<tr><td colspan="2" style="color:var(--bad)">' + e.message + '</td></tr>';
+      }
+    }
+
+    async function enqueueTvGaps() {
+      const raw = $('tvGapsLimit').value.trim();
+      const body = {};
+      if (raw !== '') {
+        const n = parseInt(raw, 10);
+        if (!n || n < 1 || n > 20000) {
+          $('tvGapsMsg').className = 'msg err';
+          $('tvGapsMsg').textContent = 'limit must be 1–20000 or blank for all';
+          return;
+        }
+        body.limit = n;
+      }
+      try {
+        $('tvGapsMsg').className = 'msg';
+        $('tvGapsMsg').textContent = 'Enqueueing incomplete TV…';
+        const data = await api('/admin/sync/enqueue-tv-gaps', body);
+        const enq = data.enqueue || {};
+        fillTvGaps(enq.gaps || {});
+        $('tvGapsMsg').className = 'msg ok';
+        $('tvGapsMsg').textContent =
+          'Enqueued ' + (enq.enqueued || 0) +
+          ' as source=backfill (day ' + (enq.sync_day || '') + ').' +
+          (enq.limit ? ' limit=' + enq.limit : ' all incomplete');
+        $('tvGapsMeta').textContent = 'Already in today’s queue are skipped (unique per day).';
+        refreshOverview();
+      } catch (e) {
+        $('tvGapsMsg').className = 'msg err';
+        $('tvGapsMsg').textContent = e.message;
       }
     }
 
@@ -465,6 +551,11 @@
         if (p.vote_average != null) lines.push(['vote_average', p.vote_average]);
       }
       lines.push(['tmdb_id', data.tmdb_id]);
+      const local = data.local || {};
+      if (data.media_type === 'tv' && data.synced) {
+        lines.push(['seasons in DB', (local.regular_seasons_in_db ?? 0) + ' / ' + (local.number_of_seasons ?? '—')]);
+        lines.push(['episodes in DB', (local.episodes_in_db ?? 0) + ' / ' + (local.number_of_episodes ?? '—')]);
+      }
       $('lookupDetails').innerHTML = lines.map(function (row) {
         return '<div><span>' + row[0] + ':</span> ' + row[1] + '</div>';
       }).join('');
@@ -539,6 +630,8 @@
     $('btnSaveConfig').addEventListener('click', saveConfig);
     $('btnLoadConfig').addEventListener('click', loadConfig);
     $('btnRunProcess').addEventListener('click', runProcessOnce);
+    $('btnTvGapsRefresh').addEventListener('click', refreshTvGaps);
+    $('btnTvGapsEnqueue').addEventListener('click', enqueueTvGaps);
     $('btnLookupFind').addEventListener('click', lookupFind);
     $('btnLookupSync').addEventListener('click', lookupSync);
     $('lookupTmdbId').addEventListener('keydown', function (e) {
@@ -548,6 +641,7 @@
     loadConn();
     if ($('apiKey').value.trim()) {
       refreshOverview();
+      refreshTvGaps();
       loadConfig();
     }
     setInterval(() => {

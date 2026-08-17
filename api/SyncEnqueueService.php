@@ -238,4 +238,102 @@ final class SyncEnqueueService
 
         return $out;
     }
+
+    /**
+     * Active TV shows whose seasons/episodes are missing or short vs declared counts.
+     *
+     * @return array{
+     *   tv_shows: int,
+     *   unique_incomplete: int,
+     *   zero_seasons: int,
+     *   seasons_but_zero_episodes: int,
+     *   fewer_seasons_than_declared: int,
+     *   fewer_episodes_than_declared: int
+     * }
+     */
+    public function tvSeasonGaps(): array
+    {
+        $from = $this->tvIncompleteFromSql();
+        $row = $this->db->query(
+            "SELECT
+                COUNT(*) AS unique_incomplete,
+                SUM(CASE WHEN COALESCE(s.season_cnt, 0) = 0 THEN 1 ELSE 0 END) AS zero_seasons,
+                SUM(CASE WHEN COALESCE(s.season_cnt, 0) > 0 AND COALESCE(e.ep_cnt, 0) = 0 THEN 1 ELSE 0 END) AS seasons_but_zero_episodes,
+                SUM(CASE WHEN t.number_of_seasons IS NOT NULL AND COALESCE(s.regular_seasons, 0) < t.number_of_seasons THEN 1 ELSE 0 END) AS fewer_seasons_than_declared,
+                SUM(CASE WHEN t.number_of_episodes IS NOT NULL AND COALESCE(e.ep_cnt, 0) < t.number_of_episodes THEN 1 ELSE 0 END) AS fewer_episodes_than_declared
+             {$from}"
+        )->fetch();
+
+        $tvShows = (int) $this->db->query(
+            'SELECT COUNT(*) FROM tv_shows WHERE is_active = 1'
+        )->fetchColumn();
+
+        return [
+            'tv_shows' => $tvShows,
+            'unique_incomplete' => (int) ($row['unique_incomplete'] ?? 0),
+            'zero_seasons' => (int) ($row['zero_seasons'] ?? 0),
+            'seasons_but_zero_episodes' => (int) ($row['seasons_but_zero_episodes'] ?? 0),
+            'fewer_seasons_than_declared' => (int) ($row['fewer_seasons_than_declared'] ?? 0),
+            'fewer_episodes_than_declared' => (int) ($row['fewer_episodes_than_declared'] ?? 0),
+        ];
+    }
+
+    /**
+     * Queue incomplete TV (popularity first) as source=backfill for the IST day.
+     *
+     * @return array{
+     *   sync_day: string,
+     *   source: string,
+     *   limit: int|null,
+     *   enqueued: int,
+     *   gaps: array<string, int>
+     * }
+     */
+    public function enqueueIncompleteTv(?string $syncDay = null, ?int $limit = null): array
+    {
+        $day = $syncDay ?: $this->todayIst();
+        $limit = $limit === null ? null : max(1, min(20000, $limit));
+        $from = $this->tvIncompleteFromSql();
+
+        $sql = "INSERT IGNORE INTO media_sync_queue
+                (media_type, tmdb_id, sync_day, source, status, attempts, enqueued_at)
+                SELECT 'tv', t.tmdb_id, ?, 'backfill', 'pending', 0, NOW()
+                {$from}
+                ORDER BY t.popularity DESC";
+        if ($limit !== null) {
+            $sql .= ' LIMIT ' . $limit;
+        }
+
+        $stmt = $this->db->prepare($sql);
+        $stmt->execute([$day]);
+
+        return [
+            'sync_day' => $day,
+            'source' => 'backfill',
+            'limit' => $limit,
+            'enqueued' => (int) $stmt->rowCount(),
+            'gaps' => $this->tvSeasonGaps(),
+        ];
+    }
+
+    private function tvIncompleteFromSql(): string
+    {
+        return "FROM tv_shows t
+LEFT JOIN (
+  SELECT tv_show_id,
+         COUNT(*) AS season_cnt,
+         SUM(CASE WHEN season_number > 0 THEN 1 ELSE 0 END) AS regular_seasons
+  FROM tv_seasons GROUP BY tv_show_id
+) s ON s.tv_show_id = t.id
+LEFT JOIN (
+  SELECT tv_show_id, COUNT(*) AS ep_cnt FROM tv_episodes GROUP BY tv_show_id
+) e ON e.tv_show_id = t.id
+WHERE t.is_active = 1
+  AND (
+    COALESCE(s.season_cnt, 0) = 0
+    OR COALESCE(e.ep_cnt, 0) = 0
+    OR (t.number_of_seasons IS NOT NULL AND COALESCE(s.regular_seasons, 0) < t.number_of_seasons)
+    OR (t.number_of_episodes IS NOT NULL AND COALESCE(e.ep_cnt, 0) < t.number_of_episodes)
+  )";
+    }
 }
