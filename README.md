@@ -165,7 +165,7 @@ Editorial rows:
 
 - `recently_added`: movies + TV released in the last 30 days, newest release date first.
 - `international_films`: English, Korean, Japanese, Spanish, and French movies ordered by popularity.
-- `this_month`: current-calendar-month movies + TV with at least 20 votes, ordered by popularity.
+- `this_month`: current-calendar-month movies + TV ordered by popularity.
 - `top_20_series`: 20 currently popular TV series.
 
 ```bash

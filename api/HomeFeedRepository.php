@@ -276,8 +276,7 @@ final class HomeFeedRepository
                     $filter,
                     (new DateTimeImmutable('first day of this month'))->format('Y-m-d'),
                     12,
-                    false,
-                    20
+                    false
                 );
             }
             if ($rowKey === 'top_20_series') {
@@ -420,8 +419,7 @@ final class HomeFeedRepository
         string $filter,
         string $since,
         int $limit,
-        bool $sortByDate,
-        ?int $voteCountGte = null
+        bool $sortByDate
     ): array {
         $today = (new DateTimeImmutable('today'))->format('Y-m-d');
         $wantMovies = $filter === 'all' || $filter === 'movies';
@@ -433,7 +431,6 @@ final class HomeFeedRepository
             $movies = $this->movies->listMovies($this->baseMovieFilters([
                 'limit' => $candidateLimit,
                 'sort' => $sortByDate ? 'release_date' : 'popularity',
-                'vote_count_gte' => $voteCountGte,
                 'release_date_gte' => $since,
                 'release_date_lte' => $today,
             ]))['data'] ?? [];
@@ -444,7 +441,6 @@ final class HomeFeedRepository
             $shows = $this->tv->listShows($this->baseTvFilters([
                 'limit' => $candidateLimit,
                 'sort' => $sortByDate ? 'first_air_date' : 'popularity',
-                'vote_count_gte' => $voteCountGte,
                 'first_air_date_gte' => $since,
                 'first_air_date_lte' => $today,
             ]))['data'] ?? [];
