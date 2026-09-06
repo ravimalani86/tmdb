@@ -86,6 +86,34 @@ final class SyncAdminRepository
         ];
     }
 
+    public function enqueueRange(string $startDate, string $endDate, ?string $mediaType, ?string $source): array
+    {
+        $start = DateTime::createFromFormat('Y-m-d', $startDate);
+        $end = DateTime::createFromFormat('Y-m-d', $endDate);
+        if ($start === false || $end === false) {
+            throw new InvalidArgumentException('start_date and end_date must be YYYY-MM-DD');
+        }
+        if ($start > $end) {
+            throw new InvalidArgumentException('start_date must be on or before end_date');
+        }
+
+        $runsChanges = $source === null || $source === 'changes';
+        if ($runsChanges && (int) $start->diff($end)->days > 13) {
+            throw new InvalidArgumentException(
+                'TMDB changes only supports a 14-day range; narrow the dates or use source=discover'
+            );
+        }
+
+        @set_time_limit(300);
+        ignore_user_abort(true);
+        $stats = $this->enqueue->enqueueRange($startDate, $endDate, $mediaType, $source);
+        return [
+            'action' => 'enqueue_range',
+            'enqueue' => $stats,
+            'status' => $this->status($stats['sync_day'] ?? $endDate),
+        ];
+    }
+
     public function process(?int $payloadLimit = null, ?string $payloadMediaType = null, ?string $payloadSource = null): array
     {
         $opts = $this->resolveProcessOptions($payloadLimit, $payloadMediaType, $payloadSource);
@@ -234,7 +262,7 @@ final class SyncAdminRepository
                 $source = null;
             }
             if ($source !== null && !is_allowed_sync_source($source)) {
-                throw new InvalidArgumentException('source must be changes, discover, credits, backfill, or empty');
+                throw new InvalidArgumentException('source must be changes, discover, credits, or empty');
             }
         }
 
@@ -345,23 +373,6 @@ final class SyncAdminRepository
     public function todayIst(): string
     {
         return (new DateTime('now', new DateTimeZone('Asia/Kolkata')))->format('Y-m-d');
-    }
-
-    public function tvGaps(): array
-    {
-        return $this->enqueue->tvSeasonGaps();
-    }
-
-    public function enqueueTvGaps(?string $syncDay = null, ?int $limit = null): array
-    {
-        @set_time_limit(120);
-        ignore_user_abort(true);
-        $stats = $this->enqueue->enqueueIncompleteTv($syncDay, $limit);
-        return [
-            'action' => 'enqueue_tv_gaps',
-            'enqueue' => $stats,
-            'status' => $this->status($stats['sync_day'] ?? $syncDay),
-        ];
     }
 
     /**

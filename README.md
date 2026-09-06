@@ -372,8 +372,6 @@ Auth: `X-API-Key` must match `ADMIN_API_KEY` (or `API_KEY`).
 | `POST /admin/sync/config` | `{}` | Read cron process config |
 | `POST /admin/sync/config/save` | `{"limit":5,"media_type":"movie"?}` | Save process limit / type |
 | `POST /admin/sync/enqueue` | `{}` or `{"day":"YYYY-MM-DD"}` | Fill today’s queue |
-| `POST /admin/sync/tv-gaps` | `{}` | TV season/episode completeness counts |
-| `POST /admin/sync/enqueue-tv-gaps` | `{}` or `{"limit":500,"day"?}` | Queue incomplete TV (`source=backfill`, popularity first; omit `limit` = all) |
 | `POST /admin/sync/process` | `{"limit":5,"media_type":"tv"?}` | Process N items (1–450) |
 | `POST /admin/sync/run` | `{"limit":5,"day"?,"media_type"?}` | Enqueue + first process batch |
 | `POST /admin/sync/lookup` | `{"media_type":"movie","tmdb_id":12345}` | TMDB preview + MySQL synced? |
@@ -381,9 +379,8 @@ Auth: `X-API-Key` must match `ADMIN_API_KEY` (or `API_KEY`).
 
 **Test order:** status → enqueue → process (repeat until `pending=0`) → status again.  
 **Sync day** = IST calendar “today” unless `day` override (empty `day` = today).  
-**Queue sources:** TMDB movie/tv/person changes ∩ DB + discover from `providers_config.json` + related people after media sync + `backfill` (incomplete TV seasons/episodes).  
+**Queue sources:** TMDB movie/tv/person changes ∩ DB + discover from `providers_config.json` + related people after media sync.  
 **Enqueue** can take 1–3 minutes. After movie/TV sync, related people may be enqueued.  
-**TV gaps:** ~8k shows may lack seasons. Use `/admin/sync/enqueue-tv-gaps` then process with `media_type=tv` and `source=backfill`, limit 3–5.  
 **Process:** full upsert (credits, videos, images, keywords, similar, recommendations, providers; TV = seasons). `limit` is 1–450.  
 **Lookup / item:** admin UI block on `admin-sync.html` — Find one id on TMDB, show synced vs not synced, then insert or full-update that row only (no related-people enqueue).
 
@@ -401,18 +398,6 @@ curl -sS -X POST "http://localhost/tmdb/api/admin/sync/enqueue" \
   -H "Content-Type: application/json" \
   -H "X-API-Key: tmdb_flutter_secret_123" \
   -d '{}'
-
-# TV season/episode gaps
-curl -sS -X POST "http://localhost/tmdb/api/admin/sync/tv-gaps" \
-  -H "Content-Type: application/json" \
-  -H "X-API-Key: tmdb_flutter_secret_123" \
-  -d '{}'
-
-# Queue incomplete TV (omit limit = all; popularity first)
-curl -sS -X POST "http://localhost/tmdb/api/admin/sync/enqueue-tv-gaps" \
-  -H "Content-Type: application/json" \
-  -H "X-API-Key: tmdb_flutter_secret_123" \
-  -d '{"limit":500}'
 
 # Process batch
 curl -sS -X POST "http://localhost/tmdb/api/admin/sync/process" \

@@ -192,8 +192,7 @@ try {
                 'POST /admin/sync/config',
                 'POST /admin/sync/config/save',
                 'POST /admin/sync/enqueue',
-                'POST /admin/sync/enqueue-tv-gaps',
-                'POST /admin/sync/tv-gaps',
+                'POST /admin/sync/enqueue-range',
                 'POST /admin/sync/process',
                 'POST /admin/sync/run',
                 'POST /admin/sync/lookup',
@@ -224,7 +223,7 @@ try {
         }
         $source = query_string($input, 'source');
         if ($source !== null && !is_allowed_sync_source($source)) {
-            json_error('source must be changes, discover, credits, or backfill', 400);
+            json_error('source must be changes, discover, or credits', 400);
         }
         if ($source !== null) {
             $source = strtolower($source);
@@ -264,7 +263,7 @@ try {
             if ($saveSource === '' || strtolower($saveSource) === 'all') {
                 $saveSource = null;
             } elseif (!is_allowed_sync_source($saveSource)) {
-                json_error('source must be changes, discover, credits, backfill, or empty', 400);
+                json_error('source must be changes, discover, credits, or empty', 400);
             } else {
                 $saveSource = strtolower($saveSource);
             }
@@ -287,24 +286,22 @@ try {
             }
         }
 
-        if ($path === '/admin/sync/tv-gaps') {
-            try {
-                json_response($syncAdmin->tvGaps());
-            } catch (Throwable $e) {
-                error_log('admin sync tv-gaps: ' . $e->getMessage());
-                json_error('TV gaps failed: ' . $e->getMessage(), 500);
+        if ($path === '/admin/sync/enqueue-range') {
+            $rangeStart = query_date($input, 'start_date');
+            $rangeEnd = query_date($input, 'end_date');
+            if ($rangeStart === null || $rangeEnd === null) {
+                json_error('start_date and end_date are required (YYYY-MM-DD)', 400);
             }
-        }
-
-        if ($path === '/admin/sync/enqueue-tv-gaps') {
-            $gapLimit = array_key_exists('limit', $input)
-                ? query_int($input, 'limit', 1, 1, 20000)
-                : null;
+            if ($source === 'credits') {
+                json_error('source must be changes, discover, or empty for enqueue-range', 400);
+            }
             try {
-                json_response($syncAdmin->enqueueTvGaps($day, $gapLimit));
+                json_response($syncAdmin->enqueueRange($rangeStart, $rangeEnd, $mediaType, $source));
+            } catch (InvalidArgumentException $e) {
+                json_error($e->getMessage(), 400);
             } catch (Throwable $e) {
-                error_log('admin sync enqueue-tv-gaps: ' . $e->getMessage());
-                json_error('Enqueue TV gaps failed: ' . $e->getMessage(), 500);
+                error_log('admin sync enqueue-range: ' . $e->getMessage());
+                json_error('Enqueue range failed: ' . $e->getMessage(), 500);
             }
         }
 

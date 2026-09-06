@@ -292,44 +292,6 @@ final class SyncMediaWriter
         return (bool) $stmt->fetchColumn();
     }
 
-    /** @return array<int, true> */
-    public function existingMovieTmdbIdSet(): array
-    {
-        $rows = $this->db->query('SELECT tmdb_id FROM movies WHERE is_active = 1')->fetchAll(PDO::FETCH_COLUMN);
-        $set = [];
-        foreach ($rows as $id) {
-            $set[(int) $id] = true;
-        }
-        return $set;
-    }
-
-    /** @return array<int, true> */
-    public function existingTvTmdbIdSet(): array
-    {
-        $rows = $this->db->query('SELECT tmdb_id FROM tv_shows WHERE is_active = 1')->fetchAll(PDO::FETCH_COLUMN);
-        $set = [];
-        foreach ($rows as $id) {
-            $set[(int) $id] = true;
-        }
-        return $set;
-    }
-
-    /** @param list<int> $tmdbIds @return array<int, true> */
-    public function existingPersonTmdbIds(array $tmdbIds): array
-    {
-        if ($tmdbIds === []) {
-            return [];
-        }
-        $placeholders = implode(',', array_fill(0, count($tmdbIds), '?'));
-        $stmt = $this->db->prepare("SELECT tmdb_id FROM people WHERE tmdb_id IN ({$placeholders})");
-        $stmt->execute(array_values($tmdbIds));
-        $set = [];
-        foreach ($stmt->fetchAll(PDO::FETCH_COLUMN) as $id) {
-            $set[(int) $id] = true;
-        }
-        return $set;
-    }
-
     // --- private upserts ---
 
     private function upsertMovieRow(array $d): string

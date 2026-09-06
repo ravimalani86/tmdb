@@ -80,7 +80,7 @@ function query_int(array $source, string $key, int $default, int $min = 1, int $
 /** @return list<string> */
 function allowed_sync_sources(): array
 {
-    return ['changes', 'discover', 'credits', 'backfill'];
+    return ['changes', 'discover', 'credits'];
 }
 
 function is_allowed_sync_source(string $source): bool

@@ -4,140 +4,244 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>TMDB Sync Admin</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <style>
     :root {
-      --bg: #0f1419;
-      --panel: #1a222c;
-      --border: #2c3845;
-      --text: #e8eef4;
-      --muted: #8b9aab;
+      --bg: #0b0f14;
+      --bg-elevated: #10161d;
+      --panel: #141b23;
+      --panel-2: #1a222c;
+      --border: #262f3a;
+      --border-soft: #1e2731;
+      --text: #eef2f6;
+      --muted: #8b98a9;
+      --muted-2: #6b7889;
       --accent: #3d9cf0;
-      --ok: #3dba7a;
+      --accent-strong: #5eb0ff;
+      --accent-soft: rgba(61, 156, 240, 0.14);
+      --ok: #34c281;
+      --ok-soft: rgba(52, 194, 129, 0.14);
       --warn: #e0a44a;
-      --bad: #e05a5a;
+      --warn-soft: rgba(224, 164, 74, 0.14);
+      --bad: #f0596a;
+      --bad-soft: rgba(240, 89, 106, 0.14);
+      --radius: 12px;
+      --radius-sm: 8px;
+      --shadow: 0 1px 2px rgba(0,0,0,0.3), 0 10px 28px -14px rgba(0,0,0,0.55);
     }
     * { box-sizing: border-box; }
+    html { -webkit-text-size-adjust: 100%; }
     body {
       margin: 0;
-      font-family: "Segoe UI", system-ui, sans-serif;
-      background: var(--bg);
+      font-family: "Inter", "Segoe UI", system-ui, -apple-system, sans-serif;
+      background:
+        radial-gradient(1200px 560px at 12% -12%, rgba(61,156,240,0.07), transparent 60%),
+        var(--bg);
       color: var(--text);
-      line-height: 1.45;
+      line-height: 1.5;
+      -webkit-font-smoothing: antialiased;
     }
-    .wrap { max-width: 1100px; margin: 0 auto; padding: 24px 16px 48px; }
-    h1 { font-size: 1.35rem; margin: 0 0 4px; font-weight: 650; }
-    .sub { color: var(--muted); font-size: 0.9rem; margin-bottom: 20px; }
+    ::selection { background: var(--accent-soft); color: var(--text); }
+    a { color: var(--accent); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+
+    .wrap { max-width: 1180px; margin: 0 auto; padding: 20px 16px 64px; }
+    @media (min-width: 640px) { .wrap { padding: 32px 24px 72px; } }
+
+    .topbar { margin-bottom: 20px; }
+    h1 {
+      font-size: 1.4rem;
+      margin: 0 0 6px;
+      font-weight: 700;
+      letter-spacing: -0.01em;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    @media (min-width: 640px) { h1 { font-size: 1.55rem; } }
+    .dot {
+      width: 9px; height: 9px; border-radius: 999px;
+      background: var(--muted-2);
+      box-shadow: 0 0 0 3px transparent;
+      flex-shrink: 0;
+      transition: background .2s, box-shadow .2s;
+    }
+    .dot.on { background: var(--ok); box-shadow: 0 0 0 3px var(--ok-soft); }
+    .dot.off { background: var(--bad); box-shadow: 0 0 0 3px var(--bad-soft); }
+    .sub { color: var(--muted); font-size: 0.88rem; margin: 0; }
+    .sub a { font-weight: 600; }
+
     .panel {
-      background: var(--panel);
+      background: linear-gradient(180deg, var(--panel-2), var(--panel));
       border: 1px solid var(--border);
-      border-radius: 10px;
-      padding: 16px 18px;
+      border-radius: var(--radius);
+      padding: 18px 20px;
       margin-bottom: 16px;
+      box-shadow: var(--shadow);
     }
+    @media (min-width: 640px) { .panel { padding: 20px 24px; } }
+
     .panel h2 {
-      margin: 0 0 12px;
-      font-size: 0.95rem;
-      font-weight: 600;
+      margin: 0 0 14px;
+      font-size: 0.8rem;
+      font-weight: 700;
       color: var(--muted);
       text-transform: uppercase;
-      letter-spacing: 0.04em;
+      letter-spacing: 0.06em;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
     }
-    .row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
-    label { font-size: 0.9rem; color: var(--muted); }
-    input[type="text"], input[type="password"], input[type="number"] {
-      background: var(--bg);
+
+    .row { display: flex; flex-wrap: wrap; gap: 10px 12px; align-items: center; }
+    label { font-size: 0.85rem; color: var(--muted); font-weight: 500; }
+
+    input[type="text"], input[type="password"], input[type="number"], input[type="date"] {
+      background: var(--bg-elevated);
       border: 1px solid var(--border);
       color: var(--text);
-      border-radius: 6px;
-      padding: 8px 10px;
-      font-size: 0.95rem;
+      border-radius: var(--radius-sm);
+      padding: 9px 12px;
+      font-size: 0.92rem;
       min-width: 0;
+      font-family: inherit;
+      transition: border-color .15s, box-shadow .15s;
     }
-    input[type="number"] { width: 100px; }
-    input[type="password"], #apiBase { flex: 1; min-width: 180px; }
+    input:focus-visible, button:focus-visible {
+      outline: none;
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px var(--accent-soft);
+    }
+    input[type="number"] { width: 110px; }
+    input[type="date"] { min-width: 150px; }
+    input[type="password"], #apiBase { flex: 1; min-width: 200px; }
+
     button {
       background: var(--accent);
       color: #fff;
       border: 0;
-      border-radius: 6px;
-      padding: 8px 14px;
-      font-size: 0.9rem;
+      border-radius: var(--radius-sm);
+      padding: 9px 16px;
+      font-size: 0.88rem;
       font-weight: 600;
       cursor: pointer;
+      font-family: inherit;
+      transition: background .15s, transform .05s;
     }
+    button:hover { background: var(--accent-strong); }
+    button:active { transform: translateY(1px); }
     button:disabled { opacity: 0.5; cursor: not-allowed; }
-    button.secondary { background: #2c3845; }
-    .grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; }
+    button.secondary { background: var(--panel-2); border: 1px solid var(--border); color: var(--text); }
+    button.secondary:hover { background: #202a35; border-color: #38424f; }
+
+    .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
     @media (max-width: 900px) { .grid { grid-template-columns: 1fr 1fr; } }
-    @media (max-width: 700px) { .grid { grid-template-columns: 1fr; } }
-    table { width: 100%; border-collapse: collapse; font-size: 0.95rem; }
-    th, td { text-align: left; padding: 8px 6px; border-bottom: 1px solid var(--border); }
-    th { color: var(--muted); font-weight: 560; font-size: 0.8rem; }
+    @media (max-width: 640px) { .grid { grid-template-columns: 1fr; } }
+    .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; align-items: start; }
+    .grid-2 > .panel { margin-bottom: 0; }
+    @media (max-width: 900px) { .grid-2 { grid-template-columns: 1fr; } }
+
+    .table-wrap { overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.9rem; min-width: 220px; }
+    th, td { text-align: left; padding: 9px 8px; border-bottom: 1px solid var(--border-soft); white-space: nowrap; }
+    th { color: var(--muted); font-weight: 600; font-size: 0.7rem; text-transform: uppercase; letter-spacing: .05em; }
     td.num { text-align: right; font-variant-numeric: tabular-nums; font-weight: 600; }
-    .meta { color: var(--muted); font-size: 0.8rem; margin-top: 10px; }
-    .msg { margin-top: 10px; font-size: 0.9rem; }
-    .msg.ok { color: var(--ok); }
-    .msg.err { color: var(--bad); }
-    .radios { display: flex; flex-wrap: wrap; gap: 12px 16px; margin: 8px 0 12px; }
-    .radios label { display: flex; align-items: center; gap: 6px; color: var(--text); cursor: pointer; }
-    .hint { color: var(--muted); font-size: 0.82rem; margin: 0 0 12px; }
-    .pill {
-      display: inline-block;
-      padding: 2px 8px;
+    tbody tr:last-child td { border-bottom: 0; }
+    tbody tr:hover td { background: rgba(255,255,255,0.025); }
+
+    .meta { color: var(--muted-2); font-size: 0.78rem; margin-top: 12px; }
+    .msg { font-size: 0.86rem; border-radius: var(--radius-sm); }
+    .msg:not(:empty) { margin-top: 12px; padding: 8px 12px; }
+    .msg.ok { color: var(--ok); background: var(--ok-soft); }
+    .msg.err { color: var(--bad); background: var(--bad-soft); }
+
+    .radios { display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0 14px; }
+    .radios label {
+      display: flex; align-items: center; gap: 6px;
+      color: var(--text); cursor: pointer;
+      background: var(--bg-elevated);
+      border: 1px solid var(--border);
+      padding: 6px 12px 6px 10px;
       border-radius: 999px;
-      background: #243040;
-      font-size: 0.75rem;
+      font-size: 0.85rem;
+      transition: border-color .15s, background .15s, color .15s;
+    }
+    .radios label:has(input:checked) {
+      border-color: var(--accent);
+      background: var(--accent-soft);
+      color: var(--accent-strong);
+    }
+    .radios input { accent-color: var(--accent); }
+
+    .hint { color: var(--muted); font-size: 0.85rem; margin: 0 0 16px; line-height: 1.6; }
+    .hint strong { color: var(--text); font-weight: 600; }
+
+    .pill {
+      display: inline-flex; align-items: center;
+      padding: 3px 10px;
+      border-radius: 999px;
+      background: var(--panel-2);
+      border: 1px solid var(--border);
+      font-size: 0.68rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: .03em;
       color: var(--muted);
     }
-    .pill.live { color: var(--ok); }
-    .pill.ok { color: var(--ok); }
-    .pill.bad { color: var(--bad); }
+    .pill.live { color: var(--ok); border-color: rgba(52,194,129,0.35); background: var(--ok-soft); }
+    .pill.ok { color: var(--ok); border-color: rgba(52,194,129,0.35); background: var(--ok-soft); }
+    .pill.bad { color: var(--bad); border-color: rgba(240,89,106,0.35); background: var(--bad-soft); }
+
     .lookup-preview {
       display: none;
-      margin-top: 14px;
-      padding-top: 14px;
+      margin-top: 16px;
+      padding-top: 16px;
       border-top: 1px solid var(--border);
     }
     .lookup-preview.show { display: block; }
-    .lookup-card {
-      display: flex;
-      gap: 14px;
-      align-items: flex-start;
-    }
+    .lookup-card { display: flex; gap: 16px; align-items: flex-start; flex-wrap: wrap; }
     .lookup-card img {
-      width: 92px;
-      height: 138px;
-      object-fit: cover;
-      border-radius: 6px;
-      background: #0b1015;
+      width: 92px; height: 138px; object-fit: cover;
+      border-radius: var(--radius-sm); background: var(--bg-elevated);
+      border: 1px solid var(--border);
       flex-shrink: 0;
     }
     .lookup-card .ph {
-      width: 92px;
-      height: 138px;
-      border-radius: 6px;
-      background: #0b1015;
-      color: var(--muted);
-      font-size: 0.75rem;
-      display: flex;
-      align-items: center;
-      justify-content: center;
+      width: 92px; height: 138px; border-radius: var(--radius-sm);
+      background: var(--bg-elevated); color: var(--muted); font-size: 0.72rem;
+      display: flex; align-items: center; justify-content: center;
+      border: 1px solid var(--border); text-align: center; padding: 8px;
       flex-shrink: 0;
     }
-    .lookup-dl { margin: 8px 0 0; }
-    .lookup-dl div { font-size: 0.9rem; }
-    .lookup-dl span { color: var(--muted); }
-    #lookupName { font-size: 1.05rem; font-weight: 650; margin: 6px 0 0; }
+    .lookup-dl { margin: 10px 0 0; display: flex; flex-direction: column; gap: 4px; }
+    .lookup-dl div { font-size: 0.88rem; }
+    .lookup-dl span { color: var(--muted); margin-right: 4px; }
+    #lookupName { font-size: 1.1rem; font-weight: 700; margin: 8px 0 0; }
+
+    @media (max-width: 560px) {
+      .row { flex-direction: column; align-items: stretch; }
+      .row label { margin-bottom: -4px; }
+      .row button,
+      .row input[type="number"],
+      .row input[type="date"],
+      .row input[type="text"],
+      .row input[type="password"] { width: 100%; }
+    }
   </style>
 </head>
 <body>
   <div class="wrap">
-    <h1>TMDB Sync Admin</h1>
-    <p class="sub">Queue overview refreshes every 10s. Process cron reads saved config first.
-      <a href="admin-apps.html" style="color:var(--accent)">App JSON Admin</a>
-      ·
-      <a href="admin-remote-config.html" style="color:var(--accent)">Remote Config Admin →</a>
-    </p>
+    <div class="topbar">
+      <h1>TMDB Sync Admin <span class="dot" id="connDot" title="Connection status"></span></h1>
+      <p class="sub">Queue overview refreshes every 10s. Process cron reads saved config first.
+        <a href="admin-apps.html">App JSON Admin</a>
+        ·
+        <a href="admin-remote-config.html">Remote Config Admin →</a>
+      </p>
+    </div>
 
     <div class="panel">
       <h2>Connection</h2>
@@ -156,64 +260,49 @@
     <div class="grid">
       <div class="panel">
         <h2>Pending by media_type <span class="pill live" id="livePill">live 10s</span></h2>
-        <table>
-          <thead><tr><th>media_type</th><th style="text-align:right">cnt</th></tr></thead>
-          <tbody id="pendingBody">
-            <tr><td colspan="2" style="color:var(--muted)">Waiting…</td></tr>
-          </tbody>
-        </table>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>media_type</th><th style="text-align:right">cnt</th></tr></thead>
+            <tbody id="pendingBody">
+              <tr><td colspan="2" style="color:var(--muted)">Waiting…</td></tr>
+            </tbody>
+          </table>
+        </div>
         <div class="meta" id="pendingMeta"></div>
       </div>
       <div class="panel">
         <h2>Pending by source</h2>
-        <table>
-          <thead><tr><th>source</th><th style="text-align:right">cnt</th></tr></thead>
-          <tbody id="sourceBody">
-            <tr><td colspan="2" style="color:var(--muted)">Waiting…</td></tr>
-          </tbody>
-        </table>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>source</th><th style="text-align:right">cnt</th></tr></thead>
+            <tbody id="sourceBody">
+              <tr><td colspan="2" style="color:var(--muted)">Waiting…</td></tr>
+            </tbody>
+          </table>
+        </div>
         <div class="meta" id="sourceMeta"></div>
       </div>
       <div class="panel">
         <h2>By status</h2>
-        <table>
-          <thead><tr><th>status</th><th style="text-align:right">cnt</th></tr></thead>
-          <tbody id="statusBody">
-            <tr><td colspan="2" style="color:var(--muted)">Waiting…</td></tr>
-          </tbody>
-        </table>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>status</th><th style="text-align:right">cnt</th></tr></thead>
+            <tbody id="statusBody">
+              <tr><td colspan="2" style="color:var(--muted)">Waiting…</td></tr>
+            </tbody>
+          </table>
+        </div>
         <div class="meta" id="statusMeta"></div>
       </div>
     </div>
 
-    <div class="panel">
-      <h2>TV season / episode gaps</h2>
-      <p class="hint">
-        Incomplete shows (no seasons, or fewer seasons/episodes than TMDB declared).
-        Enqueue uses source <strong>backfill</strong>, popularity first.
-        Drain with process <strong>tv + backfill</strong> and limit 3–5, or the browser runner
-        <a href="sync-tv-backfill.php" style="color:var(--accent)">sync-tv-backfill.php</a>
-        (same pattern as person credits).
-      </p>
-      <table>
-        <thead><tr><th>metric</th><th style="text-align:right">cnt</th></tr></thead>
-        <tbody id="tvGapsBody">
-          <tr><td colspan="2" style="color:var(--muted)">Waiting…</td></tr>
-        </tbody>
-      </table>
-      <div class="row" style="margin-top:12px">
-        <label for="tvGapsLimit">enqueue limit (blank = all)</label>
-        <input id="tvGapsLimit" type="number" min="1" max="20000" placeholder="all" />
-        <button type="button" class="secondary" id="btnTvGapsRefresh">Refresh</button>
-        <button type="button" id="btnTvGapsEnqueue">Enqueue incomplete TV</button>
-      </div>
-      <div class="msg" id="tvGapsMsg"></div>
-      <div class="meta" id="tvGapsMeta"></div>
-    </div>
-
+    <div class="grid-2">
     <div class="panel">
       <h2>Process cron config</h2>
-      <p class="hint">Priority: <strong>admin config</strong> → payload → default. <strong>All</strong> = empty (no filter).</p>
+      <p class="hint">Priority: <strong>admin config</strong> → payload → default. <strong>All</strong> = empty (no filter).
+        Drain <strong>person + credits</strong> with the browser runner
+        <a href="sync-person-credits.php">sync-person-credits.php</a>.
+      </p>
       <div class="row">
         <label for="processLimit">limit (required, 1–450)</label>
         <input id="processLimit" type="number" min="1" max="450" value="50" required />
@@ -234,7 +323,6 @@
           <label><input type="radio" name="source" value="changes" /> changes</label>
           <label><input type="radio" name="source" value="discover" /> discover</label>
           <label><input type="radio" name="source" value="credits" /> credits</label>
-          <label><input type="radio" name="source" value="backfill" /> backfill</label>
         </div>
       </div>
       <div class="row">
@@ -244,6 +332,44 @@
       </div>
       <div class="msg" id="configMsg"></div>
       <div class="meta" id="configMeta"></div>
+    </div>
+
+    <div class="panel">
+      <h2>Sync by date range</h2>
+      <p class="hint">
+        Manually enqueue TMDB <strong>changes</strong>/<strong>discover</strong> results for a date range.
+        Rows already queued for that day are skipped (unique per day). <strong>changes</strong> is capped at a 14-day range (TMDB limit);
+        use <strong>discover</strong> for longer spans. <strong>person</strong> only supports <strong>changes</strong> (no discover/person on TMDB).
+      </p>
+      <div class="row">
+        <label for="rangeStartDate">start date</label>
+        <input id="rangeStartDate" type="date" required />
+        <label for="rangeEndDate">end date</label>
+        <input id="rangeEndDate" type="date" required />
+      </div>
+      <div style="margin-top:12px">
+        <label>media_type (optional)</label>
+        <div class="radios">
+          <label><input type="radio" name="rangeMediaType" value="" checked /> All</label>
+          <label><input type="radio" name="rangeMediaType" value="movie" /> movie</label>
+          <label><input type="radio" name="rangeMediaType" value="tv" /> tv</label>
+          <label><input type="radio" name="rangeMediaType" value="person" /> person</label>
+        </div>
+      </div>
+      <div style="margin-top:12px">
+        <label>source (optional)</label>
+        <div class="radios">
+          <label><input type="radio" name="rangeSource" value="" checked /> All</label>
+          <label><input type="radio" name="rangeSource" value="changes" /> changes</label>
+          <label><input type="radio" name="rangeSource" value="discover" /> discover</label>
+        </div>
+      </div>
+      <div class="row" style="margin-top:12px">
+        <button type="button" id="btnRangeSync">Sync</button>
+      </div>
+      <div class="msg" id="rangeMsg"></div>
+      <div class="meta" id="rangeMeta"></div>
+    </div>
     </div>
 
     <div class="panel">
@@ -292,6 +418,11 @@
       return location.origin + path;
     }
 
+    function updateConnDot(state) {
+      const dot = $('connDot');
+      dot.className = 'dot' + (state ? ' ' + state : '');
+    }
+
     function loadConn() {
       $('apiBase').value = localStorage.getItem(LS_BASE) || defaultBase();
       $('apiKey').value = localStorage.getItem(LS_KEY) || '';
@@ -303,7 +434,6 @@
       $('connMsg').className = 'msg ok';
       $('connMsg').textContent = 'Connection saved locally.';
       refreshOverview();
-      refreshTvGaps();
       loadConfig();
     }
 
@@ -342,6 +472,7 @@
     async function refreshOverview() {
       try {
         const data = await api('/admin/sync/queue-overview', {});
+        updateConnDot('on');
         fillTable('pendingBody', data.pending_by_type, 'No pending rows');
         fillTable('sourceBody', data.pending_by_source, 'No pending rows');
         fillTable('statusBody', data.by_status, 'No rows');
@@ -351,68 +482,10 @@
         $('sourceMeta').textContent = 'pending total: ' + sourceTotal + ' · updated ' + now;
         $('statusMeta').textContent = 'queue total: ' + (data.total || 0) + ' · updated ' + now;
       } catch (e) {
+        updateConnDot('off');
         $('pendingBody').innerHTML = '<tr><td colspan="2" style="color:var(--bad)">' + e.message + '</td></tr>';
         $('sourceBody').innerHTML = '<tr><td colspan="2" style="color:var(--bad)">' + e.message + '</td></tr>';
         $('statusBody').innerHTML = '<tr><td colspan="2" style="color:var(--bad)">' + e.message + '</td></tr>';
-      }
-    }
-
-    const TV_GAP_KEYS = [
-      ['tv_shows', 'active TV shows'],
-      ['unique_incomplete', 'unique incomplete'],
-      ['zero_seasons', 'zero seasons'],
-      ['seasons_but_zero_episodes', 'seasons but 0 episodes'],
-      ['fewer_seasons_than_declared', 'fewer seasons than declared'],
-      ['fewer_episodes_than_declared', 'fewer episodes than declared'],
-    ];
-
-    function fillTvGaps(gaps) {
-      const tbody = $('tvGapsBody');
-      tbody.innerHTML = TV_GAP_KEYS.map(function (row) {
-        const val = gaps && gaps[row[0]] != null ? gaps[row[0]] : 0;
-        const strong = row[0] === 'unique_incomplete' ? ' style="color:var(--warn)"' : '';
-        return '<tr><td>' + row[1] + '</td><td class="num"' + strong + '>' + val + '</td></tr>';
-      }).join('');
-    }
-
-    async function refreshTvGaps() {
-      try {
-        const data = await api('/admin/sync/tv-gaps', {});
-        fillTvGaps(data);
-        $('tvGapsMeta').textContent = 'updated ' + new Date().toLocaleTimeString();
-      } catch (e) {
-        $('tvGapsBody').innerHTML = '<tr><td colspan="2" style="color:var(--bad)">' + e.message + '</td></tr>';
-      }
-    }
-
-    async function enqueueTvGaps() {
-      const raw = $('tvGapsLimit').value.trim();
-      const body = {};
-      if (raw !== '') {
-        const n = parseInt(raw, 10);
-        if (!n || n < 1 || n > 20000) {
-          $('tvGapsMsg').className = 'msg err';
-          $('tvGapsMsg').textContent = 'limit must be 1–20000 or blank for all';
-          return;
-        }
-        body.limit = n;
-      }
-      try {
-        $('tvGapsMsg').className = 'msg';
-        $('tvGapsMsg').textContent = 'Enqueueing incomplete TV…';
-        const data = await api('/admin/sync/enqueue-tv-gaps', body);
-        const enq = data.enqueue || {};
-        fillTvGaps(enq.gaps || {});
-        $('tvGapsMsg').className = 'msg ok';
-        $('tvGapsMsg').textContent =
-          'Enqueued ' + (enq.enqueued || 0) +
-          ' as source=backfill (day ' + (enq.sync_day || '') + ').' +
-          (enq.limit ? ' limit=' + enq.limit : ' all incomplete');
-        $('tvGapsMeta').textContent = 'Already in today’s queue are skipped (unique per day).';
-        refreshOverview();
-      } catch (e) {
-        $('tvGapsMsg').className = 'msg err';
-        $('tvGapsMsg').textContent = e.message;
       }
     }
 
@@ -499,6 +572,56 @@
       } catch (e) {
         $('configMsg').className = 'msg err';
         $('configMsg').textContent = e.message;
+      }
+    }
+
+    function selectedRangeMediaType() {
+      const el = document.querySelector('input[name="rangeMediaType"]:checked');
+      return el ? el.value : '';
+    }
+
+    function selectedRangeSource() {
+      const el = document.querySelector('input[name="rangeSource"]:checked');
+      return el ? el.value : '';
+    }
+
+    async function runRangeSync() {
+      const startDate = $('rangeStartDate').value;
+      if (!startDate) {
+        $('rangeMsg').className = 'msg err';
+        $('rangeMsg').textContent = 'Pick a start date';
+        return;
+      }
+      // Missing end date, or end date before start date → map end date = start date.
+      let endDate = $('rangeEndDate').value;
+      if (!endDate || endDate < startDate) {
+        endDate = startDate;
+        $('rangeEndDate').value = endDate;
+      }
+      const body = {
+        start_date: startDate,
+        end_date: endDate,
+        media_type: selectedRangeMediaType() || '',
+        source: selectedRangeSource() || '',
+      };
+      try {
+        $('rangeMsg').className = 'msg';
+        $('rangeMsg').textContent = 'Syncing ' + startDate + ' → ' + endDate + '…';
+        const data = await api('/admin/sync/enqueue-range', body);
+        const enq = data.enqueue || {};
+        $('rangeMsg').className = 'msg ok';
+        $('rangeMsg').textContent =
+          'Enqueued: movie=' + (enq.movie_enqueued || 0) +
+          ' tv=' + (enq.tv_enqueued || 0) +
+          ' person=' + (enq.person_enqueued || 0) +
+          ' · skipped: movie=' + (enq.movie_skipped || 0) +
+          ' tv=' + (enq.tv_skipped || 0) +
+          ' person=' + (enq.person_skipped || 0);
+        $('rangeMeta').textContent = 'sync_day (queue) = ' + (enq.sync_day || endDate) + ' · range ' + startDate + ' to ' + endDate;
+        refreshOverview();
+      } catch (e) {
+        $('rangeMsg').className = 'msg err';
+        $('rangeMsg').textContent = e.message;
       }
     }
 
@@ -630,8 +753,7 @@
     $('btnSaveConfig').addEventListener('click', saveConfig);
     $('btnLoadConfig').addEventListener('click', loadConfig);
     $('btnRunProcess').addEventListener('click', runProcessOnce);
-    $('btnTvGapsRefresh').addEventListener('click', refreshTvGaps);
-    $('btnTvGapsEnqueue').addEventListener('click', enqueueTvGaps);
+    $('btnRangeSync').addEventListener('click', runRangeSync);
     $('btnLookupFind').addEventListener('click', lookupFind);
     $('btnLookupSync').addEventListener('click', lookupSync);
     $('lookupTmdbId').addEventListener('keydown', function (e) {
@@ -641,7 +763,6 @@
     loadConn();
     if ($('apiKey').value.trim()) {
       refreshOverview();
-      refreshTvGaps();
       loadConfig();
     }
     setInterval(() => {

@@ -95,7 +95,7 @@ final class SyncProcessService
         return in_array($mediaType, ['movie', 'tv', 'person'], true) ? $mediaType : null;
     }
 
-    /** @return 'changes'|'discover'|'credits'|'backfill'|null */
+    /** @return 'changes'|'discover'|'credits'|null */
     private function normalizeSource(?string $source): ?string
     {
         if ($source === null || $source === '') {
