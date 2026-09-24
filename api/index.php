@@ -20,6 +20,7 @@ require __DIR__ . '/SyncEnqueueService.php';
 require __DIR__ . '/SyncProcessService.php';
 require __DIR__ . '/SyncAdminRepository.php';
 require __DIR__ . '/AppConfigRepository.php';
+require __DIR__ . '/ReelRepository.php';
 // FirebaseRemoteConfigAdmin loaded only for /admin/remote-config/* routes.
 
 // Return JSON on unexpected fatals (empty HTML 500 is hard to debug on live).
@@ -151,7 +152,7 @@ try {
     if ($path === '/' || $path === '') {
         json_response([
             'name' => 'TMDB Local API',
-            'version' => '1.8',
+            'version' => '1.9',
             'endpoints' => [
                 'POST /movies',
                 'POST /movies/{tmdb_id}',
@@ -173,6 +174,7 @@ try {
                 'POST /tv/{tmdb_id}/images',
                 'POST /tv/{tmdb_id}/keywords',
                 'POST /tv/{tmdb_id}/recommendations',
+                'POST /reels',
                 'POST /home/bootstrap',
                 'POST /home/row',
                 'POST /home/feed',
@@ -459,6 +461,15 @@ try {
             json_error('Person not found', 404);
         }
         json_response($detail);
+    }
+
+    if ($path === '/reels') {
+        $reels = new ReelRepository($pdo, $userState);
+        json_response($reels->listReels(
+            query_int($input, 'page', 1),
+            query_int($input, 'limit', 8, 1, 20),
+            query_string($input, 'device_id'),
+        ));
     }
 
     if ($path === '/movies') {
