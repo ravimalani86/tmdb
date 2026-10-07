@@ -249,10 +249,10 @@ final class HomeFeedRepository
                 return $this->fetchRecentSlider($filter, 30, true);
             }
             if ($rowKey === 'home_slider') {
-                return $this->fetchRecentSlider($filter, 30, false);
+                return $this->fetchRecentSlider($filter, 30, false, false, 60);
             }
             if ($rowKey === 'home_slider_anime') {
-                return $this->fetchRecentSlider('all', 30, false, true);
+                return $this->fetchRecentSlider('all', 30, false, true, 60);
             }
             if ($rowKey === 'recently_added') {
                 return $this->fetchMixedReleaseRow(
@@ -326,7 +326,8 @@ final class HomeFeedRepository
      * Build a mixed movie/TV slider from a strict rolling release window.
      *
      * Profile gate: popularity ordered, portrait poster required.
-     * Home: popularity ordered, with a vote floor and backdrop preference.
+     * Home: popularity ordered, backdrop preferred, no vote-count floor.
+     * Movies use $movieDays (default $days); TV uses $days.
      *
      * @return list<array<string, mixed>>
      */
@@ -334,15 +335,16 @@ final class HomeFeedRepository
         string $filter,
         int $days,
         bool $profileGate,
-        bool $animeOnly = false
+        bool $animeOnly = false,
+        ?int $movieDays = null
     ): array {
         $since = (new DateTimeImmutable("-{$days} days"))->format('Y-m-d');
+        $movieSince = (new DateTimeImmutable('-' . ($movieDays ?? $days) . ' days'))->format('Y-m-d');
         $today = (new DateTimeImmutable('today'))->format('Y-m-d');
         $wantMovies = $filter !== 'tv';
         $wantTv = $filter !== 'movies';
         $genreIds = $animeOnly ? [self::G_ANIMATION] : null;
         $sort = 'popularity';
-        $voteFloor = $profileGate ? null : 20;
         $candidateLimit = 20;
 
         $movies = [];
@@ -351,8 +353,7 @@ final class HomeFeedRepository
                 'limit' => $candidateLimit,
                 'sort' => $sort,
                 'genre_tmdb_ids' => $genreIds,
-                'vote_count_gte' => $voteFloor,
-                'release_date_gte' => $since,
+                'release_date_gte' => $movieSince,
                 'release_date_lte' => $today,
             ]))['data'] ?? [];
         }
@@ -363,7 +364,6 @@ final class HomeFeedRepository
                 'limit' => $candidateLimit,
                 'sort' => $sort,
                 'genre_tmdb_ids' => $genreIds,
-                'vote_count_gte' => $voteFloor,
                 'first_air_date_gte' => $since,
                 'first_air_date_lte' => $today,
             ]))['data'] ?? [];

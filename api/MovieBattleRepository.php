@@ -15,7 +15,7 @@ final class MovieBattleRepository
 
     private function todayDate(): string
     {
-        return (new DateTimeImmutable('now', new DateTimeZone('Asia/Kolkata')))->format('Y-m-d');
+        return (new DateTimeImmutable('now', new DateTimeZone('UTC')))->format('Y-m-d');
     }
 
     public function today(string $voter): ?array
@@ -39,7 +39,7 @@ final class MovieBattleRepository
         $vote = $this->db->prepare('SELECT selected_tmdb_id FROM movie_battle_votes WHERE battle_id = ? AND voter_id = ?');
         $vote->execute([$id, $voter]);
         $selected = $vote->fetchColumn();
-        $date = new DateTimeImmutable($row['battle_date'], new DateTimeZone('Asia/Kolkata'));
+        $date = new DateTimeImmutable($row['battle_date'], new DateTimeZone('UTC'));
         $closed = $row['battle_date'] < $this->todayDate();
         $result = [
             'id' => (int) $row['id'], 'battle_date' => $row['battle_date'], 'category' => $row['category'],
@@ -112,8 +112,8 @@ final class MovieBattleRepository
     {
         $id = (int) ($input['id'] ?? 0);
         $raw = (string) ($input['battle_date'] ?? '');
-        $date = DateTimeImmutable::createFromFormat('!Y-m-d', $raw, new DateTimeZone('Asia/Kolkata'));
-        if (!$date || $date->format('Y-m-d') !== $raw || $raw < $this->todayDate()) throw new InvalidArgumentException('Use today or a future date (YYYY-MM-DD, IST)');
+        $date = DateTimeImmutable::createFromFormat('!Y-m-d', $raw, new DateTimeZone('UTC'));
+        if (!$date || $date->format('Y-m-d') !== $raw || $raw < $this->todayDate()) throw new InvalidArgumentException('Use today or a future date (YYYY-MM-DD, GMT)');
         $a = (int) ($input['movie_a_tmdb_id'] ?? 0); $b = (int) ($input['movie_b_tmdb_id'] ?? 0);
         $category = trim((string) ($input['category'] ?? ''));
         $status = (string) ($input['status'] ?? 'scheduled');

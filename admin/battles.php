@@ -1,6 +1,6 @@
 <?php
 $pageTitle = 'Daily Battles';
-$headerSubtitle = 'One battle per date. Opens at midnight and closes the next midnight in India (IST).';
+$headerSubtitle = 'One battle per date. Opens at midnight and closes the next midnight in GMT.';
 require __DIR__ . '/partials/header.php';
 ?>
         <div class="card shadow-sm border-0">
@@ -15,7 +15,7 @@ require __DIR__ . '/partials/header.php';
               <table class="table table-hover align-middle">
                 <thead>
                   <tr class="text-muted small text-uppercase">
-                    <th>Date (IST)</th>
+                    <th>Date (GMT)</th>
                     <th>Movies</th>
                     <th>Status</th>
                     <th>Votes</th>
@@ -61,7 +61,7 @@ require __DIR__ . '/partials/header.php';
             </div>
             <div class="row g-2 mt-1">
               <div class="col-sm-6">
-                <label for="date" class="form-label">Date (IST)</label>
+                <label for="date" class="form-label">Date (GMT)</label>
                 <input id="date" type="date" class="form-control" required />
               </div>
               <div class="col-sm-6">
@@ -117,7 +117,7 @@ require __DIR__ . '/partials/header.php';
       const deleteModal = new bootstrap.Modal(el('deleteModal'));
       let editingId = 0;
       let pendingDelete = null;
-      const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+      const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'UTC', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
       el('date').min = today;
 
       function reset() {

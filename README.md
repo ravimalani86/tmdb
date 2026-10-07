@@ -152,7 +152,7 @@ curl -sS -X POST "BASE/" \
 Slider rows use strict rolling windows and return at most five available titles without widening the window:
 
 - `profile_slider`: movies + TV first aired/released in the last 30 days, popularity descending, poster required.
-- `home_slider`: last 30 days, vote count at least 20, popularity descending, backdrop preferred. Respects `all`, `movies`, and `tv`.
+- `home_slider`: movies released in the last 60 days and TV first aired in the last 30 days, popularity descending, backdrop preferred. No vote-count minimum. Respects `all`, `movies`, and `tv`.
 - `home_slider_anime`: same as `home_slider`, restricted to Animation genre (TMDB genre 16).
 
 For TV, “released” means the show’s `first_air_date`; a new season or episode of an older show does not qualify.

@@ -23,7 +23,7 @@ foreach (explode(';', $sql) as $statement) if (trim($statement) !== '') $db->exe
 $repository = new MovieBattleRepository($db);
 $voter = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 $other = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
-$today = (new DateTimeImmutable('now', new DateTimeZone('Asia/Kolkata')))->format('Y-m-d');
+$today = (new DateTimeImmutable('now', new DateTimeZone('UTC')))->format('Y-m-d');
 $checks = 0;
 function check(bool $condition, string $message): void {
     global $checks;
@@ -42,7 +42,7 @@ $input = ['battle_date'=>$today,'movie_a_tmdb_id'=>1,'movie_b_tmdb_id'=>2,'categ
 $id = $repository->save($input)['id'];
 $battle = $repository->today($voter);
 check($battle['results'] === null && $battle['selected_tmdb_id'] === null, 'Active results hidden before voting');
-check(str_ends_with($battle['starts_at'], 'T00:00:00+05:30'), 'IST midnight boundary');
+check(str_ends_with($battle['starts_at'], 'T00:00:00+00:00'), 'GMT midnight boundary');
 rejects(fn() => $repository->save($input), 'Duplicate date rejected');
 rejects(fn() => $repository->vote($id,$voter,999), 'Invalid selection rejected');
 $battle = $repository->vote($id,$voter,1);
