@@ -22,7 +22,6 @@ require __DIR__ . '/SyncAdminRepository.php';
 require __DIR__ . '/AppConfigRepository.php';
 require __DIR__ . '/ReelRepository.php';
 require __DIR__ . '/MovieBattleRepository.php';
-// FirebaseRemoteConfigAdmin loaded only for /admin/remote-config/* routes.
 
 // Return JSON on unexpected fatals (empty HTML 500 is hard to debug on live).
 register_shutdown_function(static function (): void {
@@ -90,63 +89,6 @@ try {
     $path = preg_replace('#^.*?/api#', '', $path) ?? $path;
     $path = '/' . trim($path, '/');
 
-    // --- Admin Firebase Remote Config (no DB required) ---
-    if (str_starts_with($path, '/admin/remote-config')) {
-        $adminKey = (string) ($config['admin_api_key'] ?? '');
-        if ($adminKey === '' || !hash_equals($adminKey, $providedApiKey)) {
-            json_error('Unauthorized (admin)', 401);
-        }
-
-        $rcClassFile = __DIR__ . DIRECTORY_SEPARATOR . 'FirebaseRemoteConfigAdmin.php';
-        if (!is_readable($rcClassFile)) {
-            json_error(
-                'FirebaseRemoteConfigAdmin.php missing on this server — deploy api/FirebaseRemoteConfigAdmin.php',
-                500
-            );
-        }
-        require_once $rcClassFile;
-        if (!class_exists('FirebaseRemoteConfigAdmin')) {
-            json_error('FirebaseRemoteConfigAdmin class failed to load', 500);
-        }
-
-        $rcAdmin = new FirebaseRemoteConfigAdmin($config);
-
-        if ($path === '/admin/remote-config/status') {
-            json_response(['firebase' => $rcAdmin->setupStatus()]);
-        }
-
-        if ($path === '/admin/remote-config/get') {
-            try {
-                json_response($rcAdmin->getMovflikConfig());
-            } catch (Throwable $e) {
-                error_log('admin remote-config get: ' . $e->getMessage());
-                json_error($e->getMessage(), 500);
-            }
-        }
-
-        if ($path === '/admin/remote-config/save') {
-            $bump = !array_key_exists('bump_version', $input)
-                || (bool) $input['bump_version'];
-            $configPayload = $input['config'] ?? null;
-            if ($configPayload === null && isset($input['raw']) && is_string($input['raw'])) {
-                $configPayload = $input['raw'];
-            }
-            if ($configPayload === null) {
-                json_error('config (object) or raw (JSON string) is required', 400);
-            }
-            try {
-                json_response($rcAdmin->publishMovflikConfig($configPayload, $bump));
-            } catch (InvalidArgumentException $e) {
-                json_error($e->getMessage(), 400);
-            } catch (Throwable $e) {
-                error_log('admin remote-config save: ' . $e->getMessage());
-                json_error($e->getMessage(), 500);
-            }
-        }
-
-        json_error('Admin remote-config endpoint not found', 404);
-    }
-
     $pdo = Database::connection($config);
     $movies = new MovieRepository($pdo);
     $tv = new TvRepository($pdo);
@@ -191,10 +133,18 @@ try {
                 'POST /user-state/save-for-later',
                 'POST /user-state/list',
                 'POST /app-config',
+                'POST /battles/today',
+                'POST /battles/{id}',
+                'POST /battles/{id}/vote',
+                'POST /admin/battles/list',
+                'POST /admin/battles/movies',
+                'POST /admin/battles/save',
+                'POST /admin/battles/delete',
                 'POST /admin/apps/list',
                 'POST /admin/apps/get',
                 'POST /admin/apps/create',
                 'POST /admin/apps/update',
+                'POST /admin/apps/delete',
                 'POST /admin/sync/status',
                 'POST /admin/sync/queue-overview',
                 'POST /admin/sync/config',
@@ -205,9 +155,6 @@ try {
                 'POST /admin/sync/run',
                 'POST /admin/sync/lookup',
                 'POST /admin/sync/item',
-                'POST /admin/remote-config/status',
-                'POST /admin/remote-config/get',
-                'POST /admin/remote-config/save',
             ],
         ]);
     }
@@ -426,6 +373,24 @@ try {
             }
         }
 
+        if ($path === '/admin/apps/delete') {
+            try {
+                $appConfigs->delete(require_body_string($input, 'app_id'));
+                json_response(['action' => 'deleted']);
+            } catch (InvalidArgumentException $e) {
+                json_error($e->getMessage(), 400);
+            } catch (RuntimeException $e) {
+                if ($e->getMessage() === 'App not found') {
+                    json_error('App not found', 404);
+                }
+                error_log('admin apps delete: ' . $e->getMessage());
+                json_error('Delete failed: ' . $e->getMessage(), 500);
+            } catch (Throwable $e) {
+                error_log('admin apps delete: ' . $e->getMessage());
+                json_error('Delete failed: ' . $e->getMessage(), 500);
+            }
+        }
+
         json_error('Admin apps endpoint not found', 404);
     }
 
@@ -442,6 +407,13 @@ try {
         if ($path === '/admin/battles/save') {
             try {
                 json_response($battles->save($input));
+            } catch (InvalidArgumentException $e) {
+                json_error($e->getMessage(), 400);
+            }
+        }
+        if ($path === '/admin/battles/delete') {
+            try {
+                json_response($battles->delete(require_body_int($input, 'id')));
             } catch (InvalidArgumentException $e) {
                 json_error($e->getMessage(), 400);
             }

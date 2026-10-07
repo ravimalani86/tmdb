@@ -149,4 +149,24 @@ final class MovieBattleRepository
             throw $e;
         }
     }
+
+    public function delete(int $id): array
+    {
+        if ($id <= 0) throw new InvalidArgumentException('Battle id is required');
+        $this->db->beginTransaction();
+        try {
+            $stmt = $this->db->prepare('SELECT id FROM movie_battles WHERE id = ? FOR UPDATE');
+            $stmt->execute([$id]);
+            if (!$stmt->fetch()) throw new InvalidArgumentException('Battle not found');
+            $votes = $this->db->prepare('DELETE FROM movie_battle_votes WHERE battle_id = ?');
+            $votes->execute([$id]);
+            $del = $this->db->prepare('DELETE FROM movie_battles WHERE id = ?');
+            $del->execute([$id]);
+            $this->db->commit();
+            return ['id' => $id, 'deleted' => true];
+        } catch (Throwable $e) {
+            if ($this->db->inTransaction()) $this->db->rollBack();
+            throw $e;
+        }
+    }
 }

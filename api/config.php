@@ -59,15 +59,6 @@ foreach ($envPaths as $envPath) {
     }
 }
 
-$firebaseSa = trim((string) ($env['FIREBASE_SERVICE_ACCOUNT_PATH'] ?? ''));
-if ($firebaseSa === '') {
-    $firebaseSaPath = __DIR__ . DIRECTORY_SEPARATOR . 'firebase-service-account.json';
-} elseif (str_starts_with($firebaseSa, '/') || preg_match('#^[A-Za-z]:[\\\\/]#', $firebaseSa)) {
-    $firebaseSaPath = $firebaseSa;
-} else {
-    $firebaseSaPath = dirname(__DIR__) . DIRECTORY_SEPARATOR . str_replace(['/', '\\'], DIRECTORY_SEPARATOR, $firebaseSa);
-}
-
 return [
     'db' => [
         'host' => $env['DB_HOST'] ?? 'localhost',
@@ -97,9 +88,4 @@ return [
     // Optional absolute site root for local logos, e.g. https://tmdb.growdevinfotech.in
     'public_base_url' => $env['PUBLIC_BASE_URL'] ?? '',
     'cors_origin' => $env['API_CORS_ORIGIN'] ?? '*',
-    'firebase' => [
-        'project_id' => $env['FIREBASE_PROJECT_ID'] ?? 'movflik',
-        'remote_config_key' => $env['FIREBASE_REMOTE_CONFIG_KEY'] ?? 'movflik_config',
-        'service_account_path' => $firebaseSaPath,
-    ],
 ];

@@ -1,0 +1,10 @@
+DirectoryIndex login.php index.php
+
+RewriteEngine On
+
+# Local XAMPP: http://localhost/tmdb/admin/
+RewriteBase /tmdb/admin/
+
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteRule ^ index.php [QSA,L]

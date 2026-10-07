@@ -8,7 +8,7 @@ Local movie & TV catalog for **Movflik**. Data lives in MySQL; Flutter talks onl
 | Database | MySQL (`tmdbdata`) |
 | Sync | PHP admin endpoints + server cron |
 | Config | `api/.env`, `providers_config.json` |
-| Ops UI | `api/admin-sync.html`, `api/admin-apps.html`, `api/admin-remote-config.html` |
+| Ops UI | `admin/` (login, catalog sync, catalog JSON, daily battles) |
 
 ---
 
@@ -48,11 +48,6 @@ API_KEY=tmdb_flutter_secret_123
 TMDB_API_KEY=your_primary_tmdb_key
 TMDB_API_KEYS=key1,key2,key3,key4,key5,key6
 RATE_LIMIT_SLEEP=0.2
-
-# Optional Firebase Remote Config admin
-# FIREBASE_PROJECT_ID=movflik
-# FIREBASE_REMOTE_CONFIG_KEY=movflik_config
-# FIREBASE_SERVICE_ACCOUNT_PATH=firebase-service-account.json
 ```
 
 Do **not** put a `.env` in the project root — it is ignored. Live and local both use `api/.env`.
@@ -99,6 +94,7 @@ CREATE TABLE IF NOT EXISTS app_configs (
   app_name VARCHAR(120) NOT NULL,
   package_name VARCHAR(191) NOT NULL,
   config_json LONGTEXT NOT NULL,
+  record_deleted TINYINT(1) NOT NULL DEFAULT 0,
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   UNIQUE KEY uq_app_configs_app_id (app_id),
@@ -394,7 +390,7 @@ Auth: `X-API-Key` must match `ADMIN_API_KEY` (or `API_KEY`).
 **Queue sources:** TMDB movie/tv/person changes ∩ DB + discover from `providers_config.json` + related people after media sync.  
 **Enqueue** can take 1–3 minutes. After movie/TV sync, related people may be enqueued.  
 **Process:** full upsert (credits, videos, images, keywords, similar, recommendations, providers; TV = seasons). `limit` is 1–450.  
-**Lookup / item:** admin UI block on `admin-sync.html` — Find one id on TMDB, show synced vs not synced, then insert or full-update that row only (no related-people enqueue).
+**Lookup / item:** Catalog Sync page in `admin/` — Find one id on TMDB, show synced vs not synced, then insert or full-update that row only (no related-people enqueue).
 
 ### Real examples (local)
 
@@ -520,13 +516,11 @@ Browser UIs (same admin API key):
 
 | UI | URL |
 |----|-----|
-| Sync queue | Local: `http://localhost/tmdb/api/admin-sync.html` · Live: `https://app.myappworld.in/tmdb/api/admin-sync.html` |
-| App JSON | Local: `http://localhost/tmdb/api/admin-apps.html` · Live: `https://app.myappworld.in/tmdb/api/admin-apps.html` |
-| Movflik Remote Config | Local: `http://localhost/tmdb/api/admin-remote-config.html` · Live: `https://app.myappworld.in/tmdb/api/admin-remote-config.html` |
+| Admin panel | Local: `http://localhost/tmdb/admin/login.php` · Live: `https://app.myappworld.in/tmdb/admin/login.php` |
 
 ### App JSON admin (MySQL)
 
-Create/edit apps (`app_name`, `app_id`, `package_name`, JSON). Flutter reads via `POST /app-config`. Separate from Firebase Remote Config.
+Create/edit apps (`app_name`, `app_id`, `package_name`, JSON). Flutter reads via `POST /app-config`.
 
 **Admin API** (`ADMIN_API_KEY`)
 
@@ -549,46 +543,6 @@ curl -sS -X POST "http://localhost/tmdb/api/admin/apps/create" \
   -H "Content-Type: application/json" \
   -H "X-API-Key: tmdb_flutter_secret_123" \
   -d '{"app_name":"Movflik","app_id":"movflik","package_name":"com.company.movflik","config":{"ads":true}}'
-```
-
-### Firebase Remote Config admin (Movflik JSON)
-
-Publishes parameter `movflik_config` so the Flutter app refreshes without a store update.
-
-**One-time Firebase setup**
-
-1. Firebase Console → Project settings → Service accounts → **Generate new private key**
-2. Save the JSON on the server as `api/firebase-service-account.json` (gitignored)
-3. In Google Cloud Console → IAM, ensure that service account can use **Firebase Remote Config Admin** (or Owner/Editor on the project)
-4. Add to `api/.env`:
-
-```env
-FIREBASE_PROJECT_ID=movflik
-FIREBASE_REMOTE_CONFIG_KEY=movflik_config
-# Optional if not using default path api/firebase-service-account.json
-# FIREBASE_SERVICE_ACCOUNT_PATH=firebase-service-account.json
-```
-
-**Admin API**
-
-| Endpoint | Body | Purpose |
-|----------|------|---------|
-| `POST /admin/remote-config/status` | `{}` | Setup check |
-| `POST /admin/remote-config/get` | `{}` | Load current `movflik_config` |
-| `POST /admin/remote-config/save` | `{"config":{...},"bump_version":true}` | Publish to Firebase |
-
-```bash
-# Status
-curl -sS -X POST "http://localhost/tmdb/api/admin/remote-config/status" \
-  -H "Content-Type: application/json" \
-  -H "X-API-Key: tmdb_flutter_secret_123" \
-  -d '{}'
-
-# Load
-curl -sS -X POST "http://localhost/tmdb/api/admin/remote-config/get" \
-  -H "Content-Type: application/json" \
-  -H "X-API-Key: tmdb_flutter_secret_123" \
-  -d '{}'
 ```
 
 ---
@@ -619,7 +573,7 @@ tmdb/
   README.md
 ```
 
-Per-app JSON is stored in MySQL (`app_configs`) and served by `POST /app-config`. Movflik can still use **Firebase Remote Config** separately.
+Per-app JSON is stored in MySQL (`app_configs`) and served by `POST /app-config`.
 
 ---
 

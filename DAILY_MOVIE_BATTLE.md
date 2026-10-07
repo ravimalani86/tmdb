@@ -1,8 +1,8 @@
 # Daily Movie Battle deployment
 
 1. Back up the live database, then import `database/daily_movie_battle.sql` into the existing catalog database. This only creates two new InnoDB tables; it does not seed battles or alter existing tables.
-2. Upload `api/MovieBattleRepository.php`, `api/index.php`, and `api/admin-battles.html` together. Upload the repository before replacing index.php.
-3. Open `/tmdb/api/admin-battles.html`, enter the API base URL and admin API key, search the catalog, and schedule two distinct active movies for today. Future battles can be scheduled ahead.
+2. Upload `api/MovieBattleRepository.php` and `api/index.php` together. Upload the repository before replacing index.php.
+3. Open `/tmdb/admin/battles.php` after signing in, search the catalog, and schedule two distinct active movies for today. Future battles can be scheduled ahead.
 4. After backend deployment, test Flutter against the live API. If no battle is scheduled, the Home battle card is hidden.
 
 All endpoints use POST JSON and the existing X-API-Key header. Admin routes require ADMIN_API_KEY using the existing project's auth convention. Keep admin keys out of the Flutter app. If using a separate admin key, the current API entry gate must also accept it (implemented in index.php).
@@ -21,4 +21,4 @@ Dates are India time (Asia/Kolkata): midnight inclusive to next midnight exclusi
 
 Identity is per installation, independent of local profiles, and survives normal app restarts/updates. This is anonymous participation, not verified person/device authentication: clearing app data/reinstalling, another device, or forged voter IDs can create another identity. Existing API-key authentication does not prevent that. Login/device attestation is outside this MVP.
 
-Validation: PHP syntax checks and isolated database tests for hidden results, duplicate/retry votes, invalid choices, scheduling, and closed battles. Live end-to-end Flutter verification is performed after deployment. No notifications, streaks, friend challenges, or HTTPS battle sharing links are included in this MVP.
+Validation: PHP syntax and admin JavaScript syntax checks passed. 19 backend behavior checks passed against an isolated temporary local MySQL instance (the catalog database was not modified). Flutter analysis passed and all 6 automated tests passed, including the existing smoke test. Live end-to-end Flutter verification is performed after deployment. No notifications, streaks, friend challenges, or HTTPS battle sharing links are included in this MVP.

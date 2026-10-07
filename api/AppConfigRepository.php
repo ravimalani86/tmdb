@@ -23,9 +23,22 @@ final class AppConfigRepository
                 config_json LONGTEXT NOT NULL,
                 created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                record_deleted TINYINT(1) NOT NULL DEFAULT 0,
                 UNIQUE KEY uq_app_configs_app_id (app_id),
                 UNIQUE KEY uq_app_configs_package (package_name)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4'
+        );
+        $this->ensureRecordDeletedColumn();
+    }
+
+    private function ensureRecordDeletedColumn(): void
+    {
+        $stmt = $this->db->query("SHOW COLUMNS FROM app_configs LIKE 'record_deleted'");
+        if ($stmt->fetch() !== false) {
+            return;
+        }
+        $this->db->exec(
+            'ALTER TABLE app_configs ADD COLUMN record_deleted TINYINT(1) NOT NULL DEFAULT 0 AFTER config_json'
         );
     }
 
@@ -37,6 +50,7 @@ final class AppConfigRepository
         $stmt = $this->db->query(
             'SELECT id, app_id, app_name, package_name, config_json, created_at, updated_at
              FROM app_configs
+             WHERE record_deleted = 0
              ORDER BY app_name ASC, id ASC'
         );
         $rows = $stmt->fetchAll();
@@ -49,7 +63,7 @@ final class AppConfigRepository
         $stmt = $this->db->prepare(
             'SELECT id, app_id, app_name, package_name, config_json, created_at, updated_at
              FROM app_configs
-             WHERE app_id = :app_id
+             WHERE app_id = :app_id AND record_deleted = 0
              LIMIT 1'
         );
         $stmt->execute(['app_id' => $appId]);
@@ -65,7 +79,7 @@ final class AppConfigRepository
     {
         $appId = $this->normalizeAppId($appId, false);
         $stmt = $this->db->prepare(
-            'SELECT config_json FROM app_configs WHERE app_id = :app_id LIMIT 1'
+            'SELECT config_json FROM app_configs WHERE app_id = :app_id AND record_deleted = 0 LIMIT 1'
         );
         $stmt->execute(['app_id' => $appId]);
         $row = $stmt->fetch();
@@ -87,6 +101,31 @@ final class AppConfigRepository
         $json = $this->normalizeConfigJson($config);
 
         $this->assertUnique($appId, $packageName, null);
+        $this->releaseDeletedPackage($packageName, $appId);
+
+        $deleted = $this->findRowByAppId($appId);
+        if ($deleted !== null) {
+            $stmt = $this->db->prepare(
+                'UPDATE app_configs
+                 SET app_name = :app_name, package_name = :package_name, config_json = :config_json, record_deleted = 0
+                 WHERE id = :id'
+            );
+            try {
+                $stmt->execute([
+                    'app_name' => $appName,
+                    'package_name' => $packageName,
+                    'config_json' => $json,
+                    'id' => (int) $deleted['id'],
+                ]);
+            } catch (PDOException $e) {
+                $this->throwDuplicate($e);
+            }
+            $revived = $this->getByAppId($appId);
+            if ($revived === null) {
+                throw new RuntimeException('App missing after create');
+            }
+            return $revived;
+        }
 
         $stmt = $this->db->prepare(
             'INSERT INTO app_configs (app_id, app_name, package_name, config_json)
@@ -128,11 +167,12 @@ final class AppConfigRepository
         $json = $this->normalizeConfigJson($config);
 
         $this->assertUnique($appId, $packageName, (int) $existing['id']);
+        $this->releaseDeletedPackage($packageName, $appId);
 
         $stmt = $this->db->prepare(
             'UPDATE app_configs
              SET app_name = :app_name, package_name = :package_name, config_json = :config_json
-             WHERE app_id = :app_id'
+             WHERE app_id = :app_id AND record_deleted = 0'
         );
         try {
             $stmt->execute([
@@ -150,6 +190,44 @@ final class AppConfigRepository
             throw new RuntimeException('App missing after update');
         }
         return $updated;
+    }
+
+    public function delete(string $appId): void
+    {
+        $appId = $this->normalizeAppId($appId, false);
+        $existing = $this->getByAppId($appId);
+        if ($existing === null) {
+            throw new RuntimeException('App not found');
+        }
+        $stmt = $this->db->prepare(
+            'UPDATE app_configs SET record_deleted = 1 WHERE app_id = :app_id AND record_deleted = 0'
+        );
+        $stmt->execute(['app_id' => $appId]);
+    }
+
+    /** @return array<string, mixed>|null Includes soft-deleted rows. */
+    private function findRowByAppId(string $appId): ?array
+    {
+        $stmt = $this->db->prepare(
+            'SELECT id, app_id, record_deleted FROM app_configs WHERE app_id = :app_id LIMIT 1'
+        );
+        $stmt->execute(['app_id' => $appId]);
+        $row = $stmt->fetch();
+        return $row === false ? null : $row;
+    }
+
+    /** Frees package_name held only by a soft-deleted row so a new app can use it. */
+    private function releaseDeletedPackage(string $packageName, string $appId): void
+    {
+        $stmt = $this->db->prepare(
+            'UPDATE app_configs
+             SET package_name = CONCAT(\'deleted-\', id)
+             WHERE record_deleted = 1 AND package_name = :package_name AND app_id <> :app_id'
+        );
+        $stmt->execute([
+            'package_name' => $packageName,
+            'app_id' => $appId,
+        ]);
     }
 
     /**
@@ -260,7 +338,7 @@ final class AppConfigRepository
     {
         $stmt = $this->db->prepare(
             'SELECT id, app_id, package_name FROM app_configs
-             WHERE app_id = :app_id OR package_name = :package_name'
+             WHERE record_deleted = 0 AND (app_id = :app_id OR package_name = :package_name)'
         );
         $stmt->execute(['app_id' => $appId, 'package_name' => $packageName]);
         foreach ($stmt->fetchAll() as $row) {

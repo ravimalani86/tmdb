@@ -4,5 +4,6 @@
 /exports
 /db_export/*.sql
 /api/.env
-/api/firebase-service-account.json
-**/firebase-service-account*.json
+/admin/.env
+/admin/uploads/logos/*
+!/admin/uploads/logos/.gitkeep

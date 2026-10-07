@@ -64,4 +64,7 @@ $future = (new DateTimeImmutable($today))->modify('+1 day')->format('Y-m-d');
 $futureId = $repository->save(array_merge($input,['battle_date'=>$future]))['id'];
 check($repository->detail($futureId,$voter) === null, 'Future battle hidden');
 rejects(fn() => $repository->vote($futureId,$voter,1), 'Future battle rejects votes');
+$repository->delete($futureId);
+check(!array_filter($repository->listBattles(), fn($row) => (int) $row['id'] === $futureId), 'Deleted battle removed from list');
+rejects(fn() => $repository->delete($futureId), 'Missing battle rejected');
 echo "PASS: $checks Battle checks (temporary tables only)\n";

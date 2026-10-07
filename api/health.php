@@ -26,8 +26,6 @@ try {
         'helpers.php',
         'Database.php',
         'index.php',
-        'FirebaseRemoteConfigAdmin.php',
-        'firebase-service-account.json',
         '.env',
     ];
     foreach ($files as $f) {
@@ -37,15 +35,7 @@ try {
 
     $config = require __DIR__ . '/config.php';
     $out['checks']['config_loaded'] = is_array($config);
-    $out['checks']['has_firebase_key'] = isset($config['firebase']);
     $out['checks']['api_key_set'] = trim((string) ($config['api_key'] ?? '')) !== '';
-    $out['firebase'] = [
-        'project_id' => $config['firebase']['project_id'] ?? null,
-        'remote_config_key' => $config['firebase']['remote_config_key'] ?? null,
-        'service_account_path' => $config['firebase']['service_account_path'] ?? null,
-        'service_account_readable' => isset($config['firebase']['service_account_path'])
-            && is_readable((string) $config['firebase']['service_account_path']),
-    ];
 
     require_once __DIR__ . '/Database.php';
     $pdo = Database::connection($config);
