@@ -21,6 +21,7 @@ require __DIR__ . '/SyncProcessService.php';
 require __DIR__ . '/SyncAdminRepository.php';
 require __DIR__ . '/AppConfigRepository.php';
 require __DIR__ . '/ReelRepository.php';
+require __DIR__ . '/MovieBattleRepository.php';
 // FirebaseRemoteConfigAdmin loaded only for /admin/remote-config/* routes.
 
 // Return JSON on unexpected fatals (empty HTML 500 is hard to debug on live).
@@ -62,7 +63,12 @@ try {
     // API key auth (simple security for Flutter apps).
     $expectedApiKey = (string) ($config['api_key'] ?? '');
     $providedApiKey = (string) ($_SERVER['HTTP_X_API_KEY'] ?? '');
-    if ($expectedApiKey === '' || $providedApiKey === '' || !hash_equals($expectedApiKey, $providedApiKey)) {
+    $adminApiKey = (string) ($config['admin_api_key'] ?? '');
+    $requestPath = parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH) ?? '/';
+    $isAdminRequest = preg_match('#/api/admin(?:/|$)#', rawurldecode($requestPath)) === 1;
+    $publicKeyMatches = $expectedApiKey !== '' && hash_equals($expectedApiKey, $providedApiKey);
+    $adminKeyMatches = $isAdminRequest && $adminApiKey !== '' && hash_equals($adminApiKey, $providedApiKey);
+    if ($providedApiKey === '' || (!$publicKeyMatches && !$adminKeyMatches)) {
         json_error('Unauthorized', 401);
     }
 
@@ -421,6 +427,46 @@ try {
         }
 
         json_error('Admin apps endpoint not found', 404);
+    }
+
+    if (str_starts_with($path, '/admin/battles')) {
+        $adminKey = (string) ($config['admin_api_key'] ?? '');
+        if ($adminKey === '' || !hash_equals($adminKey, $providedApiKey)) {
+            json_error('Unauthorized (admin)', 401);
+        }
+        $battles = new MovieBattleRepository($pdo);
+        if ($path === '/admin/battles/list') json_response(['data' => $battles->listBattles()]);
+        if ($path === '/admin/battles/movies') {
+            json_response(['data' => $battles->searchMovies(require_body_string($input, 'search'))]);
+        }
+        if ($path === '/admin/battles/save') {
+            try {
+                json_response($battles->save($input));
+            } catch (InvalidArgumentException $e) {
+                json_error($e->getMessage(), 400);
+            }
+        }
+        json_error('Battle admin endpoint not found', 404);
+    }
+
+    if ($path === '/battles/today' || preg_match('#^/battles/(\d+)(/vote)?$#', $path, $battleMatch)) {
+        header('Cache-Control: no-store');
+        $battles = new MovieBattleRepository($pdo);
+        try {
+            $voter = MovieBattleRepository::validateVoter(require_body_string($input, 'voter_id'));
+            if ($path === '/battles/today') json_response(['battle' => $battles->today($voter)]);
+            $battleId = (int) $battleMatch[1];
+            if (isset($battleMatch[2])) {
+                json_response(['battle' => $battles->vote($battleId, $voter, require_body_int($input, 'selected_tmdb_id'))]);
+            }
+            $battle = $battles->detail($battleId, $voter);
+            if ($battle === null) json_error('Battle not found', 404);
+            json_response(['battle' => $battle]);
+        } catch (InvalidArgumentException $e) {
+            json_error($e->getMessage(), 400);
+        } catch (DomainException $e) {
+            json_error($e->getMessage(), 409);
+        }
     }
 
     if ($path === '/home/bootstrap' || $path === '/home/row' || $path === '/home/feed') {

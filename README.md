@@ -184,6 +184,18 @@ curl -sS -X POST "BASE/home/row" \
 
 ---
 
+### Reels
+
+`POST /reels` — read-only. No new tables. Each call returns `limit` random titles (one official YouTube trailer or teaser each). The next call is another random batch. Repeats are allowed.
+
+| Field | Notes |
+|-------|--------|
+| `page` | default `1` |
+| `limit` | default `8`, max `20` |
+| `device_id` | optional; shuffle seed and My List flag |
+
+Response: `page`, `limit`, `has_more`, `day`, `data[]` with `youtube_id`, `is_today`, `is_saved_for_later`.
+
 ### Movies
 
 | Endpoint | Body |
