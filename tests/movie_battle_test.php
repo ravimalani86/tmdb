@@ -2,6 +2,11 @@
 declare(strict_types=1);
 // Uses connection-scoped TEMPORARY tables only; never modifies catalog data.
 $config = require __DIR__ . '/../api/config.php';
+// Optional dedicated local test server; still creates only temporary tables.
+if (getenv('BATTLE_TEST_PORT') !== false) {
+    $config['db'] = ['host'=>'127.0.0.1', 'port'=>(int) getenv('BATTLE_TEST_PORT'),
+        'name'=>'mysql', 'user'=>'root', 'pass'=>'', 'charset'=>'utf8mb4'];
+}
 if (!in_array($config['db']['host'], ['localhost', '127.0.0.1'], true)) {
     throw new RuntimeException('This test must only run against local MySQL');
 }
