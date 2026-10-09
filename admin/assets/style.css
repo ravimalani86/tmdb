@@ -9,11 +9,89 @@ body { background: #f5f7fa; }
 
 .sidebar-sticky { position: sticky; top: 0; height: 100vh; overflow-y: auto; }
 
+/* Dialogs: open from top (not vertically centered), like Bootstrap default */
+.modal-dialog.app-modal-top {
+  margin: 1.75rem auto;
+}
+@media (min-width: 576px) {
+  .modal-dialog.app-modal-top { margin: 1.75rem auto; }
+}
+
 /* Create/Edit app modal */
-.app-modal-content { border: none; border-radius: 14px; overflow: hidden; }
+.app-modal-content { border: none; border-radius: 14px; overflow: hidden; box-shadow: 0 16px 48px rgba(15, 23, 42, 0.18); }
 .app-modal-content .modal-header { background: #f8faff; border-bottom: 1px solid #eef1f8; padding: 1rem 1.25rem; }
 .app-modal-content .modal-body { padding: 1.25rem; }
+.app-modal-content .modal-footer { background: #fff; border-top: 1px solid #eef1f8; padding: 0.85rem 1.25rem; }
 .app-modal-content .input-group-text { background: #f8faff; color: #6c7a99; border-color: #dee2e6; }
+
+/* JSON editor dialog */
+.json-modal-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem 0.65rem;
+  margin-bottom: 0.85rem;
+  font-size: 0.85rem;
+  color: #64748b;
+}
+.json-modal-meta code {
+  background: #eef2ff;
+  color: #3730a3;
+  padding: 0.12rem 0.45rem;
+  border-radius: 6px;
+  font-size: 0.8rem;
+}
+.json-editor-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+.json-editor-toolbar .form-label { margin: 0; }
+.json-editor-shell {
+  background: #0f172a;
+  border-radius: 12px;
+  overflow: hidden;
+  border: 1px solid #1e293b;
+}
+.json-editor-shell-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.5rem 0.85rem;
+  background: #1e293b;
+  border-bottom: 1px solid #334155;
+  color: #94a3b8;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.json-editor-shell-bar .dot {
+  width: 8px; height: 8px; border-radius: 50%;
+  background: #22c55e; display: inline-block; margin-right: 0.35rem;
+  vertical-align: middle;
+}
+#jsonEditor {
+  display: block;
+  width: 100%;
+  min-height: 320px;
+  height: min(52vh, 480px);
+  resize: vertical;
+  border: 0;
+  border-radius: 0;
+  background: #0f172a;
+  color: #e2e8f0;
+  padding: 1rem 1.1rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.875rem;
+  line-height: 1.55;
+  tab-size: 2;
+  box-shadow: none !important;
+}
+#jsonEditor:focus { outline: none; }
 .api-info-btn {
   width: 1.35rem; height: 1.35rem; padding: 0; line-height: 1;
   color: #2f6fed; text-decoration: none; flex-shrink: 0;

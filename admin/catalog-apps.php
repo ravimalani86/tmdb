@@ -60,48 +60,36 @@ require __DIR__ . '/partials/header.php';
         </div>
 
   <div class="modal fade" id="appModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+    <div class="modal-dialog app-modal-top">
       <div class="modal-content app-modal-content">
         <div class="modal-header">
-          <h5 class="modal-title d-flex align-items-center gap-2"><i class="bi bi-braces text-primary"></i> <span id="formTitle">Create app</span></h5>
+          <h5 class="modal-title d-flex align-items-center gap-2"><i class="bi bi-app-indicator text-primary"></i> <span id="formTitle">Create app</span></h5>
           <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
         </div>
         <div class="modal-body">
-          <div class="row g-3 mb-3">
-            <div class="col-md-6">
-              <label for="appName" class="form-label">App name</label>
-              <div class="input-group">
-                <span class="input-group-text"><i class="bi bi-badge-ad"></i></span>
-                <input id="appName" type="text" class="form-control" maxlength="120" placeholder="e.g. Movflik" />
-              </div>
-            </div>
-            <div class="col-md-6">
-              <label for="appId" class="form-label">App ID</label>
-              <div class="input-group">
-                <span class="input-group-text"><i class="bi bi-hash"></i></span>
-                <input id="appId" type="text" class="form-control" maxlength="64" placeholder="e.g. movflik" />
-              </div>
-              <div class="form-text">Auto-filled from the app name. Cannot change after create.</div>
+          <div class="mb-3">
+            <label for="appName" class="form-label">App name</label>
+            <div class="input-group">
+              <span class="input-group-text"><i class="bi bi-badge-ad"></i></span>
+              <input id="appName" type="text" class="form-control" maxlength="120" placeholder="e.g. Movflik" />
             </div>
           </div>
           <div class="mb-3">
+            <label for="appId" class="form-label">App ID</label>
+            <div class="input-group">
+              <span class="input-group-text"><i class="bi bi-hash"></i></span>
+              <input id="appId" type="text" class="form-control" maxlength="64" placeholder="e.g. movflik" />
+            </div>
+            <div class="form-text">Auto-filled from the app name. Cannot change after create.</div>
+          </div>
+          <div class="mb-1">
             <label for="packageName" class="form-label">Package name</label>
             <div class="input-group">
               <span class="input-group-text"><i class="bi bi-box-seam"></i></span>
               <input id="packageName" type="text" class="form-control" maxlength="191" placeholder="e.g. com.company.movflik" />
             </div>
           </div>
-          <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-2">
-            <label for="editor" class="form-label mb-0">JSON</label>
-            <div class="d-flex gap-2">
-              <button type="button" class="btn btn-outline-secondary btn-sm" id="btnFormat">Format JSON</button>
-              <button type="button" class="btn btn-outline-secondary btn-sm" id="btnValidate">Validate</button>
-            </div>
-          </div>
-          <p class="text-muted small">Returned as-is by <code>POST /app-config</code>. Root must be an object or array.</p>
-          <textarea id="editor" class="form-control font-monospace" rows="14" spellcheck="false"></textarea>
           <span id="editMsg"></span>
-          <div class="text-muted small mt-2" id="editMeta"></div>
         </div>
         <div class="modal-footer">
           <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
@@ -111,8 +99,55 @@ require __DIR__ . '/partials/header.php';
     </div>
   </div>
 
+  <div class="modal fade" id="jsonModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-scrollable app-modal-top">
+      <div class="modal-content app-modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title d-flex align-items-center gap-2">
+            <i class="bi bi-braces text-primary"></i>
+            <span>JSON editor</span>
+          </h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          <div class="json-modal-meta">
+            <strong id="jsonAppName" class="text-dark">—</strong>
+            <code id="jsonAppId">—</code>
+            <span id="jsonUpdatedAt"></span>
+          </div>
+          <div class="json-editor-toolbar">
+            <label for="jsonEditor" class="form-label">Config JSON</label>
+            <div class="d-flex gap-2">
+              <button type="button" class="btn btn-outline-secondary btn-sm" id="btnFormat" title="Format JSON">
+                <i class="bi bi-text-indent-left"></i> Format
+              </button>
+              <button type="button" class="btn btn-outline-secondary btn-sm" id="btnValidate" title="Validate JSON">
+                <i class="bi bi-check2-circle"></i> Validate
+              </button>
+            </div>
+          </div>
+          <p class="text-muted small mb-2">Returned as-is by <code>POST /app-config</code>. Root must be an object or array.</p>
+          <div class="json-editor-shell">
+            <div class="json-editor-shell-bar">
+              <span><span class="dot"></span> config.json</span>
+              <span>Editable</span>
+            </div>
+            <textarea id="jsonEditor" spellcheck="false" aria-label="App config JSON"></textarea>
+          </div>
+          <span id="jsonMsg"></span>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button type="button" class="btn btn-primary" id="btnSaveJson">
+            <i class="bi bi-save"></i> Save JSON
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <div class="modal fade" id="deleteModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-dialog app-modal-top">
       <div class="modal-content app-modal-content">
         <div class="modal-header">
           <h5 class="modal-title d-flex align-items-center gap-2"><i class="bi bi-trash text-danger"></i> Delete catalog app</h5>
@@ -132,7 +167,7 @@ require __DIR__ . '/partials/header.php';
   </div>
 
   <div class="modal fade" id="apiInfoModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable app-modal-top">
       <div class="modal-content app-modal-content">
         <div class="modal-header">
           <h5 class="modal-title d-flex align-items-center gap-2"><i class="bi bi-info-circle-fill text-primary"></i> How to call app config</h5>
@@ -170,19 +205,22 @@ require __DIR__ . '/partials/header.php';
       const appsBody = document.getElementById('appsBody');
       const appModalEl = document.getElementById('appModal');
       const appModal = new bootstrap.Modal(appModalEl);
+      const jsonModal = new bootstrap.Modal(document.getElementById('jsonModal'));
       const formTitle = document.getElementById('formTitle');
       const appNameEl = document.getElementById('appName');
       const appIdEl = document.getElementById('appId');
       const packageNameEl = document.getElementById('packageName');
-      const editor = document.getElementById('editor');
+      const jsonEditor = document.getElementById('jsonEditor');
       const editMsg = document.getElementById('editMsg');
-      const editMeta = document.getElementById('editMeta');
+      const jsonMsg = document.getElementById('jsonMsg');
       const listMsg = document.getElementById('listMsg');
       const deleteModal = new bootstrap.Modal(document.getElementById('deleteModal'));
       const apiInfoModal = new bootstrap.Modal(document.getElementById('apiInfoModal'));
       const deleteMsg = document.getElementById('deleteMsg');
       const btnDeleteYes = document.getElementById('btnDeleteYes');
       let editing = false;
+      let editingApp = null;
+      let jsonApp = null;
       let pendingDelete = null;
       let appIdTouched = false;
       let rows = [];
@@ -197,32 +235,44 @@ require __DIR__ . '/partials/header.php';
       });
       appIdEl.addEventListener('input', () => { appIdTouched = true; });
 
-      function parseEditorJson() {
-        const raw = editor.value.trim() === '' ? '{}' : editor.value;
-        const obj = JSON.parse(raw);
+      function parseJsonText(raw) {
+        const text = raw.trim() === '' ? '{}' : raw;
+        const obj = JSON.parse(text);
         if (obj === null || typeof obj !== 'object') {
           throw new Error('Root must be a JSON object or array');
         }
-        return { obj: obj };
+        return obj;
       }
 
       function openModal(mode, app) {
         editing = mode === 'edit';
+        editingApp = app || null;
         appIdTouched = editing;
         formTitle.textContent = editing ? 'Edit app' : 'Create app';
         appNameEl.value = app ? (app.app_name || '') : '';
         appIdEl.value = app ? (app.app_id || '') : '';
         appIdEl.disabled = editing;
         packageNameEl.value = app ? (app.package_name || '') : '';
-        if (app && app.raw) {
-          try { editor.value = JSON.stringify(JSON.parse(app.raw), null, 2); }
-          catch (_) { editor.value = app.raw; }
-        } else {
-          editor.value = '{\n  \n}';
-        }
-        editMeta.textContent = app && app.updated_at ? 'updated_at=' + app.updated_at : '';
         setMsg(editMsg, '');
         appModal.show();
+      }
+
+      function openJsonModal(app) {
+        jsonApp = app;
+        document.getElementById('jsonAppName').textContent = app.app_name || '—';
+        document.getElementById('jsonAppId').textContent = app.app_id || '—';
+        document.getElementById('jsonUpdatedAt').textContent = app.updated_at
+          ? 'Updated ' + app.updated_at
+          : '';
+        if (app.raw) {
+          try { jsonEditor.value = JSON.stringify(JSON.parse(app.raw), null, 2); }
+          catch (_) { jsonEditor.value = app.raw; }
+        } else {
+          jsonEditor.value = '{\n  \n}';
+        }
+        setMsg(jsonMsg, '');
+        jsonModal.show();
+        setTimeout(function () { jsonEditor.focus(); }, 300);
       }
 
       async function loadApps() {
@@ -239,14 +289,21 @@ require __DIR__ . '/partials/header.php';
               '<td><code>' + escapeHtml(row.package_name) + '</code></td>' +
               '<td class="text-muted small">' + escapeHtml(row.updated_at || '') + '</td>' +
               '<td class="text-nowrap text-end">' +
-                '<button type="button" class="btn btn-sm btn-outline-secondary btn-edit" data-id="' + escapeHtml(row.app_id) + '"><i class="bi bi-pencil"></i></button> ' +
-                '<button type="button" class="btn btn-sm btn-outline-danger btn-delete" data-id="' + escapeHtml(row.app_id) + '" data-name="' + escapeHtml(row.app_name) + '"><i class="bi bi-trash"></i></button>' +
+                '<button type="button" class="btn btn-sm btn-outline-secondary btn-edit" data-id="' + escapeHtml(row.app_id) + '" title="Edit app"><i class="bi bi-pencil"></i></button> ' +
+                '<button type="button" class="btn btn-sm btn-outline-primary btn-json" data-id="' + escapeHtml(row.app_id) + '" title="Edit JSON"><i class="bi bi-braces"></i></button> ' +
+                '<button type="button" class="btn btn-sm btn-outline-danger btn-delete" data-id="' + escapeHtml(row.app_id) + '" data-name="' + escapeHtml(row.app_name) + '" title="Delete"><i class="bi bi-trash"></i></button>' +
               '</td></tr>';
           }).join('');
           appsBody.querySelectorAll('.btn-edit').forEach(function (btn) {
             btn.onclick = function () {
               const found = rows.find(function (r) { return r.app_id === btn.getAttribute('data-id'); });
               if (found) openModal('edit', found);
+            };
+          });
+          appsBody.querySelectorAll('.btn-json').forEach(function (btn) {
+            btn.onclick = function () {
+              const found = rows.find(function (r) { return r.app_id === btn.getAttribute('data-id'); });
+              if (found) openJsonModal(found);
             };
           });
           appsBody.querySelectorAll('.btn-delete').forEach(function (btn) {
@@ -298,33 +355,27 @@ require __DIR__ . '/partials/header.php';
 
       document.getElementById('btnFormat').onclick = function () {
         try {
-          editor.value = JSON.stringify(parseEditorJson().obj, null, 2);
-          setMsg(editMsg, 'Formatted.', 'ok');
+          jsonEditor.value = JSON.stringify(parseJsonText(jsonEditor.value), null, 2);
+          setMsg(jsonMsg, 'Formatted.', 'ok');
         } catch (e) {
-          setMsg(editMsg, 'Invalid JSON: ' + e.message, 'err');
+          setMsg(jsonMsg, 'Invalid JSON: ' + e.message, 'err');
         }
       };
       document.getElementById('btnValidate').onclick = function () {
         try {
-          parseEditorJson();
-          setMsg(editMsg, 'Valid JSON.', 'ok');
+          parseJsonText(jsonEditor.value);
+          setMsg(jsonMsg, 'Valid JSON.', 'ok');
         } catch (e) {
-          setMsg(editMsg, 'Invalid JSON: ' + e.message, 'err');
+          setMsg(jsonMsg, 'Invalid JSON: ' + e.message, 'err');
         }
       };
+
       document.getElementById('btnSaveApp').onclick = async function () {
-        let parsed;
-        try { parsed = parseEditorJson(); }
-        catch (e) {
-          setMsg(editMsg, 'Fix JSON before save: ' + e.message, 'err');
-          showToast('Fix JSON before save: ' + e.message, 'err');
-          return;
-        }
         const payload = {
           app_name: appNameEl.value.trim(),
           app_id: appIdEl.value.trim(),
           package_name: packageNameEl.value.trim(),
-          raw: JSON.stringify(parsed.obj),
+          raw: editing && editingApp ? (editingApp.raw || '{}') : '{}',
         };
         setMsg(editMsg, 'Saving…');
         try {
@@ -335,6 +386,34 @@ require __DIR__ . '/partials/header.php';
           await loadApps();
         } catch (e) {
           setMsg(editMsg, e.message || String(e), 'err');
+          showToast(e.message || String(e), 'err');
+        }
+      };
+
+      document.getElementById('btnSaveJson').onclick = async function () {
+        if (!jsonApp) return;
+        let parsed;
+        try { parsed = parseJsonText(jsonEditor.value); }
+        catch (e) {
+          setMsg(jsonMsg, 'Fix JSON before save: ' + e.message, 'err');
+          showToast('Fix JSON before save: ' + e.message, 'err');
+          return;
+        }
+        const payload = {
+          app_name: jsonApp.app_name || '',
+          app_id: jsonApp.app_id || '',
+          package_name: jsonApp.package_name || '',
+          raw: JSON.stringify(parsed),
+        };
+        setMsg(jsonMsg, 'Saving…');
+        try {
+          await api('/tmdb/apps/update', payload);
+          jsonModal.hide();
+          showToast('JSON updated');
+          setMsg(jsonMsg, '');
+          await loadApps();
+        } catch (e) {
+          setMsg(jsonMsg, e.message || String(e), 'err');
           showToast(e.message || String(e), 'err');
         }
       };
