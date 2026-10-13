@@ -402,7 +402,14 @@ try {
         $battles = new MovieBattleRepository($pdo);
         if ($path === '/admin/battles/list') json_response(['data' => $battles->listBattles()]);
         if ($path === '/admin/battles/movies') {
-            json_response(['data' => $battles->searchMovies(require_body_string($input, 'search'))]);
+            try {
+                json_response(['data' => $battles->searchMovies(
+                    require_body_string($input, 'search'),
+                    require_body_string($input, 'media_type')
+                )]);
+            } catch (InvalidArgumentException $e) {
+                json_error($e->getMessage(), 400);
+            }
         }
         if ($path === '/admin/battles/save') {
             try {

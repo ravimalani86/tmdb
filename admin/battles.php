@@ -16,14 +16,15 @@ require __DIR__ . '/partials/header.php';
                 <thead>
                   <tr class="text-muted small text-uppercase">
                     <th>Date (GMT)</th>
-                    <th>Movies</th>
+                    <th>Type</th>
+                    <th>Titles</th>
                     <th>Status</th>
                     <th>Votes</th>
                     <th class="text-end">Actions</th>
                   </tr>
                 </thead>
                 <tbody id="rows">
-                  <tr><td colspan="5" class="text-muted">Loading…</td></tr>
+                  <tr><td colspan="6" class="text-muted">Loading…</td></tr>
                 </tbody>
               </table>
             </div>
@@ -39,42 +40,53 @@ require __DIR__ . '/partials/header.php';
           <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
         </div>
         <div class="modal-body">
-          <label for="search" class="form-label">Find a movie in the catalog</label>
-          <div class="input-group mb-2">
-            <span class="input-group-text"><i class="bi bi-search"></i></span>
-            <input id="search" class="form-control" placeholder="Movie title" />
-            <button type="button" class="btn btn-outline-secondary" id="find">Search</button>
-          </div>
-          <div id="searchResults" class="d-flex flex-column gap-2 mb-3"></div>
           <form id="battleForm">
-            <div class="row g-2">
-              <div class="col-sm-6">
-                <label for="movieA" class="form-label">Movie A — TMDB ID</label>
-                <input id="movieA" type="number" min="1" class="form-control" required />
-                <div id="titleA" class="text-muted small"></div>
+            <label for="mediaType" class="form-label">Media type</label>
+            <select id="mediaType" class="form-select mb-3" required>
+              <option value="">— Select —</option>
+              <option value="movie">Movie</option>
+              <option value="tv">Series</option>
+            </select>
+
+            <div id="battleFields">
+              <label for="search" class="form-label" id="searchLabel">Find a title in the catalog</label>
+              <div class="position-relative mb-3">
+                <div class="input-group">
+                  <span class="input-group-text"><i class="bi bi-search"></i></span>
+                  <input id="search" class="form-control" placeholder="Title" autocomplete="off" />
+                  <button type="button" class="btn btn-outline-secondary" id="find">Search</button>
+                </div>
+                <div id="searchSuggest" class="list-group position-absolute w-100 shadow-sm d-none" style="z-index: 1055; max-height: 240px; overflow-y: auto;"></div>
               </div>
-              <div class="col-sm-6">
-                <label for="movieB" class="form-label">Movie B — TMDB ID</label>
-                <input id="movieB" type="number" min="1" class="form-control" required />
-                <div id="titleB" class="text-muted small"></div>
+              <div class="row g-2">
+                <div class="col-sm-6">
+                  <label for="movieA" class="form-label" id="labelA">Title A — TMDB ID</label>
+                  <input id="movieA" type="number" min="1" class="form-control" required />
+                  <div id="titleA" class="text-muted small"></div>
+                </div>
+                <div class="col-sm-6">
+                  <label for="movieB" class="form-label" id="labelB">Title B — TMDB ID</label>
+                  <input id="movieB" type="number" min="1" class="form-control" required />
+                  <div id="titleB" class="text-muted small"></div>
+                </div>
               </div>
+              <div class="row g-2 mt-1">
+                <div class="col-sm-6">
+                  <label for="date" class="form-label">Date (GMT)</label>
+                  <input id="date" type="date" class="form-control" required />
+                </div>
+                <div class="col-sm-6">
+                  <label for="status" class="form-label">Status</label>
+                  <select id="status" class="form-select">
+                    <option value="scheduled">Scheduled</option>
+                    <option value="disabled">Disabled</option>
+                  </select>
+                </div>
+              </div>
+              <label for="category" class="form-label mt-2">Category / question context</label>
+              <input id="category" class="form-control" maxlength="100" placeholder="Sci-fi favourites" />
+              <p class="text-muted small mt-3 mb-0" id="lockHint">After the first vote, titles, media type, and date are locked. You can still update the category or disable today's battle.</p>
             </div>
-            <div class="row g-2 mt-1">
-              <div class="col-sm-6">
-                <label for="date" class="form-label">Date (GMT)</label>
-                <input id="date" type="date" class="form-control" required />
-              </div>
-              <div class="col-sm-6">
-                <label for="status" class="form-label">Status</label>
-                <select id="status" class="form-select">
-                  <option value="scheduled">Scheduled</option>
-                  <option value="disabled">Disabled</option>
-                </select>
-              </div>
-            </div>
-            <label for="category" class="form-label mt-2">Category / question context</label>
-            <input id="category" class="form-control" maxlength="100" placeholder="Sci-fi favourites" />
-            <p class="text-muted small mt-3 mb-0">After the first vote, movie choices and date are locked. You can still update the category or disable today's battle.</p>
             <span id="message"></span>
           </form>
         </div>
@@ -117,19 +129,149 @@ require __DIR__ . '/partials/header.php';
       const deleteModal = new bootstrap.Modal(el('deleteModal'));
       let editingId = 0;
       let pendingDelete = null;
+      let fieldsLocked = false;
+      let searchTimer = 0;
+      let searchSeq = 0;
       const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'UTC', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
       el('date').min = today;
 
+      function typeLabel(type) {
+        return type === 'tv' ? 'Series' : 'Movie';
+      }
+
+      function noun(type) {
+        return type === 'tv' ? 'series' : 'movie';
+      }
+
+      function applyTypeLabels() {
+        const type = el('mediaType').value;
+        const label = typeLabel(type || 'movie');
+        el('searchLabel').textContent = type ? ('Find a ' + noun(type) + ' in the catalog') : 'Find a title in the catalog';
+        el('search').placeholder = type ? (label + ' title') : 'Title';
+        el('labelA').textContent = label + ' A — TMDB ID';
+        el('labelB').textContent = label + ' B — TMDB ID';
+      }
+
+      function setFieldsEnabled(enabled) {
+        const disabled = !enabled;
+        ['search', 'find', 'movieA', 'movieB', 'date', 'status', 'category', 'btnSave'].forEach((id) => {
+          el(id).disabled = disabled;
+        });
+        if (enabled && fieldsLocked) {
+          el('movieA').disabled = true;
+          el('movieB').disabled = true;
+          el('date').disabled = true;
+          el('mediaType').disabled = true;
+        }
+      }
+
+      function hideSuggest() {
+        const box = el('searchSuggest');
+        box.replaceChildren();
+        box.classList.add('d-none');
+      }
+
+      function pickTitle(movie, side) {
+        if (el('movie' + side).disabled) return;
+        el('movie' + side).value = movie.tmdb_id;
+        el('title' + side).textContent = movie.title;
+        hideSuggest();
+      }
+
+      function showSuggest(movies, mediaType) {
+        const box = el('searchSuggest');
+        box.replaceChildren();
+        if (!movies.length) {
+          const empty = document.createElement('div');
+          empty.className = 'list-group-item text-muted small';
+          empty.textContent = 'No catalog ' + noun(mediaType) + ' found.';
+          box.append(empty);
+          box.classList.remove('d-none');
+          return;
+        }
+        const label = typeLabel(mediaType);
+        for (const movie of movies) {
+          const item = document.createElement('div');
+          item.className = 'list-group-item list-group-item-action py-2';
+          const title = document.createElement('div');
+          title.className = 'small';
+          title.textContent = movie.title + ' (' + movie.tmdb_id + ')';
+          const actions = document.createElement('div');
+          actions.className = 'd-flex gap-2 mt-1';
+          for (const side of ['A', 'B']) {
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.className = 'btn btn-outline-secondary btn-sm';
+            button.textContent = 'Use as ' + label + ' ' + side;
+            button.onmousedown = (event) => {
+              event.preventDefault();
+              pickTitle(movie, side);
+            };
+            actions.append(button);
+          }
+          item.append(title, actions);
+          box.append(item);
+        }
+        box.classList.remove('d-none');
+      }
+
+      async function runCatalogSearch(options) {
+        const forced = !!(options && options.forced);
+        const mediaType = el('mediaType').value;
+        if (mediaType !== 'movie' && mediaType !== 'tv') {
+          setMsg(el('message'), 'Select a media type first', 'err');
+          return;
+        }
+        const query = el('search').value.trim();
+        if (!query) {
+          hideSuggest();
+          if (forced) throw new Error('Enter a ' + noun(mediaType) + ' title');
+          return;
+        }
+        if (!forced && query.length < 2) {
+          hideSuggest();
+          return;
+        }
+        const seq = ++searchSeq;
+        const find = el('find');
+        if (forced) find.disabled = true;
+        setMsg(el('message'), '');
+        try {
+          const data = await api('/tmdb/battles/movies', { search: query, media_type: mediaType });
+          if (seq !== searchSeq) return;
+          showSuggest(data.data || [], mediaType);
+        } finally {
+          if (forced) syncTypeGate();
+        }
+      }
+
+      function clearSelections() {
+        el('movieA').value = '';
+        el('movieB').value = '';
+        el('titleA').textContent = '';
+        el('titleB').textContent = '';
+        el('search').value = '';
+        hideSuggest();
+      }
+
+      function syncTypeGate() {
+        const hasType = el('mediaType').value === 'movie' || el('mediaType').value === 'tv';
+        applyTypeLabels();
+        setFieldsEnabled(hasType);
+      }
+
       function reset() {
         editingId = 0;
+        fieldsLocked = false;
         el('battleForm').reset();
+        el('mediaType').disabled = false;
         el('search').value = '';
-        el('searchResults').replaceChildren();
+        hideSuggest();
         el('date').value = today;
-        el('movieA').disabled = el('movieB').disabled = el('date').disabled = false;
         el('titleA').textContent = el('titleB').textContent = '';
         el('editorTitle').textContent = 'Schedule battle';
         setMsg(el('message'), '');
+        syncTypeGate();
       }
 
       function openCreate() {
@@ -139,8 +281,11 @@ require __DIR__ . '/partials/header.php';
 
       function openEdit(battle) {
         editingId = Number(battle.id);
+        fieldsLocked = Number(battle.total_votes) > 0;
         el('search').value = '';
-        el('searchResults').replaceChildren();
+        hideSuggest();
+        el('mediaType').value = battle.media_type === 'tv' ? 'tv' : 'movie';
+        el('mediaType').disabled = fieldsLocked;
         el('movieA').value = battle.movie_a_tmdb_id;
         el('movieB').value = battle.movie_b_tmdb_id;
         el('date').value = battle.battle_date;
@@ -148,10 +293,9 @@ require __DIR__ . '/partials/header.php';
         el('status').value = battle.status;
         el('titleA').textContent = battle.movie_a_title || '';
         el('titleB').textContent = battle.movie_b_title || '';
-        const locked = Number(battle.total_votes) > 0;
-        el('movieA').disabled = el('movieB').disabled = el('date').disabled = locked;
         el('editorTitle').textContent = 'Edit battle #' + editingId;
         setMsg(el('message'), '');
+        syncTypeGate();
         battleModal.show();
       }
 
@@ -162,7 +306,7 @@ require __DIR__ . '/partials/header.php';
         if (!rows.length) {
           const tr = document.createElement('tr');
           const td = document.createElement('td');
-          td.colSpan = 5;
+          td.colSpan = 6;
           td.className = 'text-muted';
           td.textContent = 'No battles yet. Click Schedule battle.';
           tr.append(td);
@@ -173,6 +317,7 @@ require __DIR__ . '/partials/header.php';
           const tr = document.createElement('tr');
           for (const value of [
             battle.battle_date,
+            typeLabel(battle.media_type),
             (battle.movie_a_title || battle.movie_a_tmdb_id) + ' vs ' + (battle.movie_b_title || battle.movie_b_tmdb_id),
             battle.status,
             battle.total_votes,
@@ -208,6 +353,11 @@ require __DIR__ . '/partials/header.php';
         }
       }
 
+      el('mediaType').onchange = () => {
+        if (!fieldsLocked) clearSelections();
+        syncTypeGate();
+      };
+
       el('btnDeleteYes').onclick = async () => {
         if (!pendingDelete || !pendingDelete.id) return;
         const yes = el('btnDeleteYes');
@@ -229,12 +379,18 @@ require __DIR__ . '/partials/header.php';
       el('btnNew').onclick = openCreate;
       el('battleForm').onsubmit = async (event) => {
         event.preventDefault();
+        const mediaType = el('mediaType').value;
+        if (mediaType !== 'movie' && mediaType !== 'tv') {
+          setMsg(el('message'), 'Select a media type first', 'err');
+          return;
+        }
         const save = el('btnSave');
         save.disabled = true;
         setMsg(el('message'), '');
         try {
           await api('/tmdb/battles/save', {
             id: editingId,
+            media_type: mediaType,
             battle_date: el('date').value,
             movie_a_tmdb_id: Number(el('movieA').value),
             movie_b_tmdb_id: Number(el('movieB').value),
@@ -249,51 +405,44 @@ require __DIR__ . '/partials/header.php';
           setMsg(el('message'), e.message || String(e), 'err');
           showToast(e.message || String(e), 'err');
         } finally {
-          save.disabled = false;
+          syncTypeGate();
         }
       };
+      el('search').oninput = () => {
+        clearTimeout(searchTimer);
+        searchTimer = setTimeout(() => {
+          runCatalogSearch({ forced: false }).catch((e) => {
+            hideSuggest();
+            setMsg(el('message'), e.message || String(e), 'err');
+          });
+        }, 300);
+      };
+      el('search').onkeydown = (event) => {
+        if (event.key === 'Escape') {
+          hideSuggest();
+          return;
+        }
+        if (event.key === 'Enter') {
+          event.preventDefault();
+          clearTimeout(searchTimer);
+          runCatalogSearch({ forced: true }).catch((e) => {
+            setMsg(el('message'), e.message || String(e), 'err');
+          });
+        }
+      };
+      el('search').onblur = () => hideSuggest();
+      el('find').onmousedown = (event) => event.preventDefault();
       el('find').onclick = async () => {
-        const find = el('find');
-        find.disabled = true;
-        setMsg(el('message'), '');
+        clearTimeout(searchTimer);
         try {
-          const query = el('search').value.trim();
-          if (!query) throw new Error('Enter a movie title');
-          const data = await api('/tmdb/battles/movies', { search: query });
-          el('searchResults').replaceChildren();
-          const movies = data.data || [];
-          for (const movie of movies) {
-            const row = document.createElement('div');
-            row.className = 'border rounded p-2';
-            const label = document.createElement('div');
-            label.className = 'small mb-1';
-            label.textContent = movie.title + ' (' + movie.tmdb_id + ')';
-            row.append(label);
-            const actions = document.createElement('div');
-            actions.className = 'd-flex gap-2';
-            for (const side of ['A', 'B']) {
-              const button = document.createElement('button');
-              button.type = 'button';
-              button.className = 'btn btn-outline-secondary btn-sm';
-              button.textContent = 'Use as Movie ' + side;
-              button.onclick = () => {
-                if (el('movie' + side).disabled) return;
-                el('movie' + side).value = movie.tmdb_id;
-                el('title' + side).textContent = movie.title;
-              };
-              actions.append(button);
-            }
-            row.append(actions);
-            el('searchResults').append(row);
-          }
-          if (!movies.length) el('searchResults').textContent = 'No catalog movies found.';
+          await runCatalogSearch({ forced: true });
+          el('search').focus();
         } catch (e) {
           setMsg(el('message'), e.message || String(e), 'err');
-        } finally {
-          find.disabled = false;
         }
       };
 
+      syncTypeGate();
       try { await load(); }
       catch (e) { setMsg(el('listMsg'), e.message || String(e), 'err'); }
     })();

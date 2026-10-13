@@ -18,6 +18,23 @@ final class MovieBattleRepository
         return (new DateTimeImmutable('now', new DateTimeZone('UTC')))->format('Y-m-d');
     }
 
+    private function normalizeMediaType(mixed $raw): string
+    {
+        $type = strtolower(trim((string) $raw));
+        if (!in_array($type, ['movie', 'tv'], true)) {
+            throw new InvalidArgumentException('media_type must be movie or tv');
+        }
+        return $type;
+    }
+
+    /** @return array{table:string,title:string} */
+    private function catalog(string $mediaType): array
+    {
+        return $mediaType === 'tv'
+            ? ['table' => 'tv_shows', 'title' => 'name']
+            : ['table' => 'movies', 'title' => 'title'];
+    }
+
     public function today(string $voter): ?array
     {
         $stmt = $this->db->prepare("SELECT id FROM movie_battles WHERE battle_date = ? AND status = 'scheduled'");
@@ -28,25 +45,45 @@ final class MovieBattleRepository
 
     public function detail(int $id, string $voter): ?array
     {
-        $stmt = $this->db->prepare("SELECT b.*, a.title AS a_title, a.poster_path AS a_poster,
-            c.title AS b_title, c.poster_path AS b_poster FROM movie_battles b
-            INNER JOIN movies a ON a.tmdb_id = b.movie_a_tmdb_id AND a.is_active = 1
-            INNER JOIN movies c ON c.tmdb_id = b.movie_b_tmdb_id AND c.is_active = 1
-            WHERE b.id = ? AND b.status = 'scheduled' AND b.battle_date <= ?");
+        $stmt = $this->db->prepare('SELECT * FROM movie_battles WHERE id = ? AND status = \'scheduled\' AND battle_date <= ?');
         $stmt->execute([$id, $this->todayDate()]);
         $row = $stmt->fetch();
         if (!$row) return null;
+
+        $mediaType = $this->normalizeMediaType($row['media_type'] ?? 'movie');
+        $catalog = $this->catalog($mediaType);
+        $join = $this->db->prepare(
+            "SELECT a.{$catalog['title']} AS a_title, a.poster_path AS a_poster,
+                c.{$catalog['title']} AS b_title, c.poster_path AS b_poster
+             FROM {$catalog['table']} a
+             INNER JOIN {$catalog['table']} c ON c.tmdb_id = ? AND c.is_active = 1
+             WHERE a.tmdb_id = ? AND a.is_active = 1"
+        );
+        $join->execute([(int) $row['movie_b_tmdb_id'], (int) $row['movie_a_tmdb_id']]);
+        $titles = $join->fetch();
+        if (!$titles) return null;
+
         $vote = $this->db->prepare('SELECT selected_tmdb_id FROM movie_battle_votes WHERE battle_id = ? AND voter_id = ?');
         $vote->execute([$id, $voter]);
         $selected = $vote->fetchColumn();
         $date = new DateTimeImmutable($row['battle_date'], new DateTimeZone('UTC'));
         $closed = $row['battle_date'] < $this->todayDate();
+        $side = static fn(int $tmdbId, string $title, ?string $poster): array => [
+            'tmdb_id' => $tmdbId,
+            'title' => $title,
+            'poster_url' => tmdb_image($poster, 'w500'),
+            'media_type' => $mediaType,
+        ];
         $result = [
-            'id' => (int) $row['id'], 'battle_date' => $row['battle_date'], 'category' => $row['category'],
-            'starts_at' => $date->format(DATE_ATOM), 'ends_at' => $date->modify('+1 day')->format(DATE_ATOM),
+            'id' => (int) $row['id'],
+            'battle_date' => $row['battle_date'],
+            'media_type' => $mediaType,
+            'category' => $row['category'],
+            'starts_at' => $date->format(DATE_ATOM),
+            'ends_at' => $date->modify('+1 day')->format(DATE_ATOM),
             'status' => $closed ? 'closed' : 'active',
-            'movie_a' => ['tmdb_id' => (int) $row['movie_a_tmdb_id'], 'title' => $row['a_title'], 'poster_url' => tmdb_image($row['a_poster'], 'w500')],
-            'movie_b' => ['tmdb_id' => (int) $row['movie_b_tmdb_id'], 'title' => $row['b_title'], 'poster_url' => tmdb_image($row['b_poster'], 'w500')],
+            'movie_a' => $side((int) $row['movie_a_tmdb_id'], $titles['a_title'], $titles['a_poster']),
+            'movie_b' => $side((int) $row['movie_b_tmdb_id'], $titles['b_title'], $titles['b_poster']),
             'selected_tmdb_id' => $selected === false ? null : (int) $selected,
             'results' => null,
         ];
@@ -95,17 +132,48 @@ final class MovieBattleRepository
 
     public function listBattles(): array
     {
-        return $this->db->query("SELECT b.*, a.title AS movie_a_title, c.title AS movie_b_title,
+        $rows = $this->db->query("SELECT b.*,
             (SELECT COUNT(*) FROM movie_battle_votes v WHERE v.battle_id = b.id) AS total_votes
-            FROM movie_battles b LEFT JOIN movies a ON a.tmdb_id = b.movie_a_tmdb_id
-            LEFT JOIN movies c ON c.tmdb_id = b.movie_b_tmdb_id ORDER BY battle_date DESC LIMIT 100")->fetchAll();
+            FROM movie_battles b ORDER BY battle_date DESC LIMIT 100")->fetchAll();
+        $out = [];
+        foreach ($rows as $row) {
+            $mediaType = in_array(($row['media_type'] ?? 'movie'), ['movie', 'tv'], true)
+                ? $row['media_type']
+                : 'movie';
+            $catalog = $this->catalog($mediaType);
+            $lookup = $this->db->prepare(
+                "SELECT {$catalog['title']} AS title FROM {$catalog['table']} WHERE tmdb_id = ? LIMIT 1"
+            );
+            $lookup->execute([(int) $row['movie_a_tmdb_id']]);
+            $titleA = $lookup->fetchColumn();
+            $lookup->execute([(int) $row['movie_b_tmdb_id']]);
+            $titleB = $lookup->fetchColumn();
+            $out[] = array_merge($row, [
+                'media_type' => $mediaType,
+                'movie_a_title' => $titleA === false ? null : $titleA,
+                'movie_b_title' => $titleB === false ? null : $titleB,
+            ]);
+        }
+        return $out;
     }
 
-    public function searchMovies(string $query): array
+    public function searchMovies(string $query, string $mediaType = 'movie'): array
     {
-        $stmt = $this->db->prepare('SELECT tmdb_id, title FROM movies WHERE is_active = 1 AND title LIKE ? ORDER BY popularity DESC LIMIT 10');
+        $mediaType = $this->normalizeMediaType($mediaType);
+        $catalog = $this->catalog($mediaType);
+        $stmt = $this->db->prepare(
+            "SELECT tmdb_id, {$catalog['title']} AS title
+             FROM {$catalog['table']}
+             WHERE is_active = 1 AND {$catalog['title']} LIKE ?
+             ORDER BY popularity DESC LIMIT 10"
+        );
         $stmt->execute(['%' . $query . '%']);
-        return $stmt->fetchAll();
+        $rows = $stmt->fetchAll();
+        foreach ($rows as &$row) {
+            $row['media_type'] = $mediaType;
+        }
+        unset($row);
+        return $rows;
     }
 
     public function save(array $input): array
@@ -114,11 +182,13 @@ final class MovieBattleRepository
         $raw = (string) ($input['battle_date'] ?? '');
         $date = DateTimeImmutable::createFromFormat('!Y-m-d', $raw, new DateTimeZone('UTC'));
         if (!$date || $date->format('Y-m-d') !== $raw || $raw < $this->todayDate()) throw new InvalidArgumentException('Use today or a future date (YYYY-MM-DD, GMT)');
+        $mediaType = $this->normalizeMediaType($input['media_type'] ?? '');
         $a = (int) ($input['movie_a_tmdb_id'] ?? 0); $b = (int) ($input['movie_b_tmdb_id'] ?? 0);
         $category = trim((string) ($input['category'] ?? ''));
         $status = (string) ($input['status'] ?? 'scheduled');
-        if ($a <= 0 || $b <= 0 || $a === $b) throw new InvalidArgumentException('Choose two different movies');
+        if ($a <= 0 || $b <= 0 || $a === $b) throw new InvalidArgumentException('Choose two different titles');
         if (strlen($category) > 100 || !in_array($status, ['scheduled', 'disabled'], true)) throw new InvalidArgumentException('Invalid category or status');
+        $catalog = $this->catalog($mediaType);
         $this->db->beginTransaction();
         try {
             if ($id > 0) {
@@ -127,19 +197,24 @@ final class MovieBattleRepository
                 if (!$old) throw new InvalidArgumentException('Battle not found');
                 $stmt = $this->db->prepare('SELECT COUNT(*) FROM movie_battle_votes WHERE battle_id = ?');
                 $stmt->execute([$id]);
-                if ((int) $stmt->fetchColumn() > 0 && ($raw !== $old['battle_date'] || $a !== (int) $old['movie_a_tmdb_id'] || $b !== (int) $old['movie_b_tmdb_id'])) {
-                    throw new InvalidArgumentException('Movies and date cannot change after voting starts');
+                $oldType = (string) ($old['media_type'] ?? 'movie');
+                if ((int) $stmt->fetchColumn() > 0 && ($raw !== $old['battle_date'] || $a !== (int) $old['movie_a_tmdb_id'] || $b !== (int) $old['movie_b_tmdb_id'] || $mediaType !== $oldType)) {
+                    throw new InvalidArgumentException('Titles, media type, and date cannot change after voting starts');
                 }
             }
-            $stmt = $this->db->prepare('SELECT COUNT(DISTINCT tmdb_id) FROM movies WHERE tmdb_id IN (?, ?) AND is_active = 1');
+            $stmt = $this->db->prepare(
+                "SELECT COUNT(DISTINCT tmdb_id) FROM {$catalog['table']} WHERE tmdb_id IN (?, ?) AND is_active = 1"
+            );
             $stmt->execute([$a, $b]);
-            if ((int) $stmt->fetchColumn() !== 2) throw new InvalidArgumentException('Both movies must exist and be active in the catalog');
+            if ((int) $stmt->fetchColumn() !== 2) {
+                throw new InvalidArgumentException('Both titles must exist and be active in the ' . ($mediaType === 'tv' ? 'series' : 'movie') . ' catalog');
+            }
             if ($id > 0) {
-                $stmt = $this->db->prepare('UPDATE movie_battles SET battle_date=?, movie_a_tmdb_id=?, movie_b_tmdb_id=?, category=?, status=? WHERE id=?');
-                $stmt->execute([$raw, $a, $b, $category, $status, $id]);
+                $stmt = $this->db->prepare('UPDATE movie_battles SET battle_date=?, media_type=?, movie_a_tmdb_id=?, movie_b_tmdb_id=?, category=?, status=? WHERE id=?');
+                $stmt->execute([$raw, $mediaType, $a, $b, $category, $status, $id]);
             } else {
-                $stmt = $this->db->prepare('INSERT INTO movie_battles (battle_date, movie_a_tmdb_id, movie_b_tmdb_id, category, status) VALUES (?, ?, ?, ?, ?)');
-                $stmt->execute([$raw, $a, $b, $category, $status]); $id = (int) $this->db->lastInsertId();
+                $stmt = $this->db->prepare('INSERT INTO movie_battles (battle_date, media_type, movie_a_tmdb_id, movie_b_tmdb_id, category, status) VALUES (?, ?, ?, ?, ?, ?)');
+                $stmt->execute([$raw, $mediaType, $a, $b, $category, $status]); $id = (int) $this->db->lastInsertId();
             }
             $this->db->commit();
             return ['id' => $id, 'saved' => true];

@@ -14,8 +14,10 @@ require __DIR__ . '/../api/Database.php';
 require __DIR__ . '/../api/helpers.php';
 require __DIR__ . '/../api/MovieBattleRepository.php';
 $db = Database::connection($config);
-$db->exec('CREATE TEMPORARY TABLE movies (tmdb_id INT PRIMARY KEY, title VARCHAR(100), poster_path VARCHAR(100), is_active INT) ENGINE=InnoDB');
-$db->exec("INSERT INTO movies VALUES (1,'Movie A','/a.jpg',1),(2,'Movie B','/b.jpg',1),(3,'Inactive',NULL,0)");
+$db->exec('CREATE TEMPORARY TABLE movies (tmdb_id INT PRIMARY KEY, title VARCHAR(100), poster_path VARCHAR(100), popularity DOUBLE, is_active INT) ENGINE=InnoDB');
+$db->exec("INSERT INTO movies VALUES (1,'Movie A','/a.jpg',10,1),(2,'Movie B','/b.jpg',9,1),(3,'Inactive',NULL,1,0)");
+$db->exec('CREATE TEMPORARY TABLE tv_shows (tmdb_id INT PRIMARY KEY, name VARCHAR(100), poster_path VARCHAR(100), popularity DOUBLE, is_active INT) ENGINE=InnoDB');
+$db->exec("INSERT INTO tv_shows VALUES (101,'Series A','/sa.jpg',20,1),(102,'Series B','/sb.jpg',15,1),(103,'Inactive Show',NULL,1,0)");
 $sql = file_get_contents(__DIR__ . '/../database/daily_movie_battle.sql');
 $sql = str_replace('CREATE TABLE IF NOT EXISTS', 'CREATE TEMPORARY TABLE', $sql);
 $sql = preg_replace('/,\s*CONSTRAINT fk_battle_vote[^\n]+/', '', $sql);
@@ -36,11 +38,15 @@ function rejects(callable $work, string $message): void {
 }
 check($repository->today($voter) === null, 'No scheduled battle');
 rejects(fn() => MovieBattleRepository::validateVoter('bad'), 'Invalid UUID rejected');
-rejects(fn() => $repository->save(['battle_date'=>$today,'movie_a_tmdb_id'=>1,'movie_b_tmdb_id'=>1]), 'Same movie rejected');
-rejects(fn() => $repository->save(['battle_date'=>$today,'movie_a_tmdb_id'=>1,'movie_b_tmdb_id'=>3]), 'Inactive movie rejected');
-$input = ['battle_date'=>$today,'movie_a_tmdb_id'=>1,'movie_b_tmdb_id'=>2,'category'=>'Sci-fi'];
+rejects(fn() => $repository->save(['battle_date'=>$today,'media_type'=>'movie','movie_a_tmdb_id'=>1,'movie_b_tmdb_id'=>1]), 'Same movie rejected');
+rejects(fn() => $repository->save(['battle_date'=>$today,'media_type'=>'movie','movie_a_tmdb_id'=>1,'movie_b_tmdb_id'=>3]), 'Inactive movie rejected');
+rejects(fn() => $repository->save(['battle_date'=>$today,'media_type'=>'','movie_a_tmdb_id'=>1,'movie_b_tmdb_id'=>2]), 'Missing media_type rejected');
+rejects(fn() => $repository->save(['battle_date'=>$today,'media_type'=>'tv','movie_a_tmdb_id'=>1,'movie_b_tmdb_id'=>2]), 'Movie IDs rejected for tv battle');
+$input = ['battle_date'=>$today,'media_type'=>'movie','movie_a_tmdb_id'=>1,'movie_b_tmdb_id'=>2,'category'=>'Sci-fi'];
 $id = $repository->save($input)['id'];
 $battle = $repository->today($voter);
+check($battle['media_type'] === 'movie', 'Movie battle media_type');
+check($battle['movie_a']['media_type'] === 'movie' && $battle['movie_b']['media_type'] === 'movie', 'Side media_type');
 check($battle['results'] === null && $battle['selected_tmdb_id'] === null, 'Active results hidden before voting');
 check(str_ends_with($battle['starts_at'], 'T00:00:00+00:00'), 'GMT midnight boundary');
 rejects(fn() => $repository->save($input), 'Duplicate date rejected');
@@ -53,6 +59,7 @@ check($repository->detail($id,$other)['results'] === null, 'Results hidden from 
 $battle = $repository->vote($id,$other,2);
 check($battle['results']['movie_a_percent'] === 50.0 && $battle['results']['leading_tmdb_id'] === null, 'Tie supported');
 rejects(fn() => $repository->save(array_merge($input,['id'=>$id,'movie_a_tmdb_id'=>2,'movie_b_tmdb_id'=>1])), 'Voted pair locked');
+rejects(fn() => $repository->save(array_merge($input,['id'=>$id,'media_type'=>'tv'])), 'Voted media_type locked');
 $repository->save(array_merge($input,['id'=>$id,'status'=>'disabled']));
 check($repository->today($voter) === null, 'Disabled battle hidden');
 rejects(fn() => $repository->vote($id,$voter,1), 'Disabled battle rejects votes');
@@ -67,4 +74,19 @@ rejects(fn() => $repository->vote($futureId,$voter,1), 'Future battle rejects vo
 $repository->delete($futureId);
 check(!array_filter($repository->listBattles(), fn($row) => (int) $row['id'] === $futureId), 'Deleted battle removed from list');
 rejects(fn() => $repository->delete($futureId), 'Missing battle rejected');
+
+$tvDate = (new DateTimeImmutable($today))->modify('+2 day')->format('Y-m-d');
+$tvInput = ['battle_date'=>$tvDate,'media_type'=>'tv','movie_a_tmdb_id'=>101,'movie_b_tmdb_id'=>102,'category'=>'TV favourites'];
+$tvId = $repository->save($tvInput)['id'];
+$found = array_values(array_filter($repository->listBattles(), fn($row) => (int) $row['id'] === $tvId))[0] ?? null;
+check($found !== null && $found['media_type'] === 'tv' && $found['movie_a_title'] === 'Series A', 'Series list titles');
+$search = $repository->searchMovies('Series', 'tv');
+check(count($search) === 2 && $search[0]['media_type'] === 'tv', 'Series search');
+rejects(fn() => $repository->searchMovies('Series', 'film'), 'Invalid search media_type rejected');
+$db->exec("UPDATE movie_battles SET battle_date = '$today', status = 'scheduled' WHERE id = $tvId");
+$tvBattle = $repository->today($voter);
+check($tvBattle !== null && $tvBattle['media_type'] === 'tv' && $tvBattle['movie_a']['title'] === 'Series A', 'Series today battle');
+$tvBattle = $repository->vote($tvId, $voter, 101);
+check($tvBattle['selected_tmdb_id'] === 101 && $tvBattle['movie_a']['media_type'] === 'tv', 'Series vote');
+
 echo "PASS: $checks Battle checks (temporary tables only)\n";
